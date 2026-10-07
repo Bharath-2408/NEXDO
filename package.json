@@ -1,0 +1,21 @@
+{
+  "name": "nexdo",
+  "version": "1.0.0",
+  "description": "NEXDO — Voice-first, intent-first real-world service coordination platform",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "preview": "npm --prefix frontend run preview",
+    "lint": "npm --prefix frontend run lint",
+    "typecheck": "npm --prefix frontend run typecheck",
+    "test": "npm --prefix frontend run test"
+  },
+  "keywords": [
+    "nexdo",
+    "voice-first",
+    "service-coordination",
+    "intent-driven"
+  ],
+  "author": "NEXDO Team"
+}

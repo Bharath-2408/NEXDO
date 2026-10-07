@@ -1,0 +1,38 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "typecheck": "tsc --noEmit",
+    "test:voice": "tsx src/voice/__tests__/verify_voice_system.ts",
+    "test:backend": "tsx src/backend/__tests__/verify_backend_system.ts",
+    "test:security": "tsx src/backend/__tests__/verify_security_and_auth.ts",
+    "test": "npm run test:voice && npm run test:backend && npm run test:security",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
+    "@tailwindcss/vite": "^4.3.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "autoprefixer": "^10.5.6",
+    "lucide-react": "^1.45.0",
+    "oxlint": "^1.81.0",
+    "postcss": "^8.5.28",
+    "react-router-dom": "^7.18.3",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0"
+  }
+}

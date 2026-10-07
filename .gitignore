@@ -1,0 +1,64 @@
+# ==============================================================================
+# NEXDO - Git Ignore Configuration
+# ==============================================================================
+
+# Dependencies
+node_modules/
+*/node_modules/
+.pnp/
+.pnp.js
+
+# Production Builds & Bundler Caches
+dist/
+dist-ssr/
+build/
+out/
+.vite/
+*/.vite/
+*.tsbuildinfo
+frontend/tsconfig.app.tsbuildinfo
+frontend/tsconfig.node.tsbuildinfo
+
+# Environment & Secrets (NEVER COMMIT)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.pfx
+*.p12
+credentials.json
+secrets/
+
+# Logs & Diagnostics
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Headless Browser Profiles & Local Scratch
+.chrome_test_profile/
+*/.chrome_test_profile/
+scratch/
+.tmp/
+.temp/
+
+# IDE & Editor Configuration
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# OS Artifacts
+.DS_Store
+Thumbs.db
+Desktop.ini
