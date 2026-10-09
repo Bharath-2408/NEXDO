@@ -523,3 +523,9 @@ CREATE POLICY audit_logs_admin_only ON public.audit_logs
             WHERE u.id = auth.uid() AND u.role = 'ADMIN'
         )
     );
+
+-- ------------------------------------------------------------------------------
+-- 14. REFRESH POSTGREST SCHEMA CACHE
+-- ------------------------------------------------------------------------------
+NOTIFY pgrst, 'reload schema';
+
