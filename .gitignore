@@ -58,6 +58,9 @@ scratch/
 *.njsproj
 *.sln
 
+# Vercel
+.vercel
+
 # OS Artifacts
 .DS_Store
 Thumbs.db

@@ -9,8 +9,12 @@
     "preview": "npm --prefix frontend run preview",
     "lint": "npm --prefix frontend run lint",
     "typecheck": "npm --prefix frontend run typecheck",
-    "test": "npm --prefix frontend run test"
+    "test": "npm --prefix frontend run test",
+    "postinstall": "npm --prefix frontend install"
   },
+  "workspaces": [
+    "frontend"
+  ],
   "keywords": [
     "nexdo",
     "voice-first",
