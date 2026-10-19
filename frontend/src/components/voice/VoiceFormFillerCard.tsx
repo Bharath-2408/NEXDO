@@ -24,11 +24,11 @@ export const VoiceFormFillerCard: React.FC<VoiceFormFillerCardProps> = ({
     },
     {
       label: 'Name & Phone Only',
-      phrase: 'En peyar Ravi Kumar, phone number 9840122334, Chennai district, Tamil Nadu',
+      phrase: 'En peyar Anbarasan, phone number 9840122334, Chennai district, Tamil Nadu',
     },
     {
       label: 'English Natural',
-      phrase: 'My name is Senthil Murugan, date of birth 15/05/1992, mobile 9791088221, Karur district',
+      phrase: 'My name is Karthik, date of birth 15/05/1992, mobile 9791088221, Karur district',
     },
   ];
 

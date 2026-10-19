@@ -31,6 +31,10 @@ export interface MatchedProvider {
   phone: string;
   bio: string;
   badges: string[];
+  latitude?: number | null;
+  longitude?: number | null;
+  locationUpdatedAt?: string | null;
+  isLocationShared?: boolean;
 }
 
 export type BookingStatus =
@@ -100,10 +104,13 @@ export interface Booking {
   customerId: string;
   customerName: string;
   customerPhone: string;
+  technicianId?: string;
   provider: MatchedProvider;
   serviceTitle: string;
   scheduledTime: string;
   address: string;
+  latitude?: number;
+  longitude?: number;
   status: BookingStatus;
   estimatedPrice: number;
   otpCode: string;

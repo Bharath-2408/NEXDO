@@ -25,14 +25,14 @@ export const CapabilityManager: React.FC = () => {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-base font-extrabold text-[#071A36]">
-            Technician Capabilities ({capabilities.length})
+            Your Service Domains ({capabilities.length})
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            A NEXDO technician can handle multiple services. You receive eligible requests across all active capabilities.
+            A NEXDO service provider can handle multiple services. You receive eligible requests across all active service domains.
           </p>
         </div>
         <Button size="sm" leftIcon={<Plus className="w-4 h-4" />} onClick={() => setAddModalOpen(true)}>
-          Add Skill
+          Add Domain
         </Button>
       </div>
 
@@ -103,10 +103,10 @@ export const CapabilityManager: React.FC = () => {
       </div>
 
       {/* Add Capability Modal */}
-      <Modal isOpen={addModalOpen} onClose={() => setAddModalOpen(false)} title="Add Service Capability">
+      <Modal isOpen={addModalOpen} onClose={() => setAddModalOpen(false)} title="Add Service Domain">
         <div className="text-left">
           <p className="text-xs text-slate-500 mb-3">
-            Select additional skills you are certified or experienced in providing:
+            Select additional services you are certified or experienced in providing:
           </p>
           <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
             {availableToAdd.length === 0 ? (

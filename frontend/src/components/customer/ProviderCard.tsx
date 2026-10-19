@@ -44,12 +44,18 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
               </h3>
             </div>
 
-            {/* Rating */}
-            <div className="flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">
-              <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-              <span className="text-xs font-bold text-amber-900">{provider.rating}</span>
-              <span className="text-[10px] text-slate-500 font-medium">({provider.reviewCount})</span>
-            </div>
+            {/* Rating or New Pro Badge */}
+            {provider.reviewCount > 0 ? (
+              <div className="flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">
+                <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                <span className="text-xs font-bold text-amber-900">{provider.rating}</span>
+                <span className="text-[10px] text-slate-500 font-medium">({provider.reviewCount})</span>
+              </div>
+            ) : (
+              <span className="px-2 py-0.5 rounded-lg bg-blue-50 border border-blue-200 text-[10px] font-bold text-blue-700 shrink-0">
+                New Pro
+              </span>
+            )}
           </div>
 
           <p className="text-xs font-semibold text-blue-700 mt-0.5 truncate">
@@ -59,16 +65,20 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
           <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-slate-500">
             <span className="flex items-center gap-1 font-medium">
               <Briefcase className="w-3.5 h-3.5 text-slate-400" />
-              {provider.experienceYears || 5}+ yrs exp
+              {provider.experienceYears ?? 0} yrs exp
             </span>
-            <span className="flex items-center gap-1 font-medium">
-              <MapPin className="w-3.5 h-3.5 text-slate-400" />
-              {provider.distanceKm} km away
-            </span>
-            <span className="flex items-center gap-1 font-medium">
-              <Clock className="w-3.5 h-3.5 text-slate-400" />
-              ETA ~{provider.etaMinutes} mins
-            </span>
+            {provider.distanceKm !== undefined && (
+              <span className="flex items-center gap-1 font-medium">
+                <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                {provider.distanceKm} km away
+              </span>
+            )}
+            {provider.etaMinutes !== undefined && (
+              <span className="flex items-center gap-1 font-medium">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                ETA ~{provider.etaMinutes} mins
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -139,7 +149,7 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
             className="bg-[#071A36] hover:bg-[#2563EB] text-xs font-bold"
             data-voice-action="SELECT_TECHNICIAN"
           >
-            Select Technician
+            Select Service Provider
           </Button>
         </div>
       </div>

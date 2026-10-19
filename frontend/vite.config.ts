@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
@@ -55,19 +55,29 @@ function nexdoBackendApiPlugin(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [
-    react(),
-    tailwindcss(),
-    nexdoBackendApiPlugin(),
-  ],
-  resolve: {
-    alias: {
-      '@': path.resolve(import.meta.dirname, './src'),
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  for (const [key, val] of Object.entries(env)) {
+    if (!process.env[key]) {
+      process.env[key] = val;
+    }
+  }
+
+  return {
+    plugins: [
+      react(),
+      tailwindcss(),
+      nexdoBackendApiPlugin(),
+    ],
+    resolve: {
+      alias: {
+        '@': path.resolve(import.meta.dirname, './src'),
+      },
     },
-  },
-  server: {
-    port: 5173,
-    host: true,
-  },
+    server: {
+      port: 5173,
+      host: true,
+    },
+  };
 });
+  

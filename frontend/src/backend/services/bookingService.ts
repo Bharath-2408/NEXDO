@@ -19,8 +19,9 @@ import {
 } from '../database/types';
 import { TechnicianMatchingService } from './technicianMatchingService';
 import { Booking, MatchedProvider } from '../../types/customer';
-import { JobOpportunity } from '../../types/technician';
+import { JobOpportunity, TechnicianEarnings } from '../../types/technician';
 import { AuthSecurity } from './authSecurity';
+import { calculateHaversineDistanceKm, estimateEtaMinutes, isValidCoordinate } from '../../utils/geoUtils';
 
 export interface CreateBookingInput {
   customerId?: string;
@@ -30,10 +31,13 @@ export interface CreateBookingInput {
   appointmentDate?: string;
   appointmentTime?: string;
   address: string;
+  latitude?: number;
+  longitude?: number;
   serviceMode?: 'DIAGNOSIS' | 'SERVICE';
   notes?: string;
   estimatedPrice?: number;
   idempotencyKey?: string;
+  status?: BookingStatus;
 }
 
 export class BookingService {
@@ -86,12 +90,15 @@ export class BookingService {
       id: record.id,
       referenceCode: record.reference_code,
       customerId: record.customer_id,
+      technicianId: record.technician_id,
       customerName: (customer as any)?.full_name || (customer as any)?.name || 'Customer',
       customerPhone: customer?.phone || '9876543210',
       provider,
       serviceTitle: record.service_title,
       scheduledTime: record.scheduled_time,
       address: record.address,
+      latitude: record.latitude !== undefined && record.latitude !== null ? Number(record.latitude) : undefined,
+      longitude: record.longitude !== undefined && record.longitude !== null ? Number(record.longitude) : undefined,
       status: record.status,
       estimatedPrice: record.estimated_price,
       otpCode: record.otp_code,
@@ -149,7 +156,7 @@ export class BookingService {
     const custId = input.customerId || 'u0000001-0000-0000-0000-000000000001';
     const serviceMode = input.serviceMode || 'DIAGNOSIS';
     const bookingId = `bk_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const refCode = `NXD-${Math.floor(10000 + Math.random() * 90000)}`;
+    const refCode = `NXD-${Date.now().toString().slice(-6)}${Math.floor(10 + Math.random() * 90)}`;
     const now = new Date().toISOString();
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
     const finalOtp = Math.floor(1000 + Math.random() * 9000).toString();
@@ -176,6 +183,16 @@ export class BookingService {
       }
     }
 
+    let lat: number | undefined = undefined;
+    let lon: number | undefined = undefined;
+    if (input.latitude !== undefined && input.longitude !== undefined) {
+      if (!isValidCoordinate(input.latitude, input.longitude)) {
+        throw new Error('Invalid GPS coordinates provided for service address.');
+      }
+      lat = Number(input.latitude);
+      lon = Number(input.longitude);
+    }
+
     const record: BookingRecord = {
       id: bookingId,
       reference_code: refCode,
@@ -186,12 +203,14 @@ export class BookingService {
       appointment_date: input.appointmentDate,
       appointment_time: input.appointmentTime,
       address: input.address || 'Chennai, Tamil Nadu',
+      latitude: lat,
+      longitude: lon,
       service_mode: serviceMode,
       diagnosis_fee: diagnosisFee,
       service_amount: serviceMode === 'SERVICE' ? initialEstimatedPrice : 0,
       total_amount: initialEstimatedPrice,
-      status: 'ACCEPTED',
-      confirmation_status: 'CONFIRMED',
+      status: input.status || 'ACCEPTED',
+      confirmation_status: (input.status || 'ACCEPTED') === 'ACCEPTED' ? 'CONFIRMED' : 'PENDING',
       estimated_price: initialEstimatedPrice,
       otp_code: otp,
       final_otp_code: finalOtp,
@@ -202,7 +221,9 @@ export class BookingService {
     };
 
     dbStore.bookings.set(record.id, record);
-    dbStore.syncToRemote('bookings', record);
+    dbStore.syncToRemote('bookings', record).then(() => {
+      dbStore.syncToRemote('booking_status_history', history);
+    }).catch(() => {});
 
     // Initial audit event
     const event: BookingEventRecord = {
@@ -210,7 +231,7 @@ export class BookingService {
       booking_id: record.id,
       event_type: 'BOOKING_CREATED',
       from_status: undefined,
-      to_status: 'ACCEPTED',
+      to_status: record.status,
       actor_role: 'CUSTOMER',
       actor_id: custId,
       metadata: { serviceMode, diagnosisFee, initialEstimatedPrice },
@@ -223,13 +244,12 @@ export class BookingService {
       id: `bsh_${Date.now()}`,
       booking_id: record.id,
       previous_status: undefined,
-      new_status: 'ACCEPTED',
+      new_status: record.status,
       changed_by: custId,
       reason: 'Initial booking request submitted',
       created_at: now,
     };
     dbStore.bookingStatusHistory.set(history.id, history);
-    dbStore.syncToRemote('booking_status_history', history);
 
     // If diagnosis mode, initialize diagnosis record with authoritative ₹149 fee
     if (serviceMode === 'DIAGNOSIS') {
@@ -247,6 +267,22 @@ export class BookingService {
     }
 
     return this.mapToFrontendBooking(record);
+  }
+
+  /**
+   * Async booking creation that awaits remote database persistence
+   */
+  public static async createBookingAsync(input: CreateBookingInput): Promise<Booking> {
+    const booking = this.createBooking(input);
+    const record = dbStore.bookings.get(booking.id);
+    if (record) {
+      await dbStore.syncToRemote('bookings', record);
+      const hist = Array.from(dbStore.bookingStatusHistory.values()).find((h) => h.booking_id === record.id);
+      if (hist) {
+        await dbStore.syncToRemote('booking_status_history', hist);
+      }
+    }
+    return booking;
   }
 
   public static getBookingById(bookingId: string): Booking | undefined {
@@ -275,6 +311,138 @@ export class BookingService {
     return records
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .map((r) => this.mapToFrontendBooking(r));
+  }
+
+  /**
+   * Secure live tracking endpoint for active bookings
+   * Enforces zero-trust IDOR authorization: Only the booking's customer or assigned technician.
+   * Auto-stops on completion or cancellation. Returns real GPS coordinates and calculates distance.
+   */
+  public static async getBookingTrackingDetailsAsync(
+    bookingId: string,
+    requestingUserId?: string,
+    requestingRole?: string
+  ) {
+    let booking = dbStore.bookings.get(bookingId);
+    if (!booking) {
+      booking = (await dbStore.fetchBookingFromRemote(bookingId)) || undefined;
+    }
+    if (!booking) {
+      throw new Error('Booking not found');
+    }
+
+    // Zero-trust IDOR check: Only the customer who booked or the assigned technician can view tracking
+    if (requestingUserId) {
+      const reqUuid = dbStore.toUuid(requestingUserId);
+      const custUuid = dbStore.toUuid(booking.customer_id);
+
+      // Resolve technician user id
+      let tech = dbStore.technicianProfiles.get(booking.technician_id);
+      if (!tech) {
+        tech = (await dbStore.fetchTechnicianProfileFromRemote(booking.technician_id)) || undefined;
+      }
+      const techUuid = tech ? dbStore.toUuid(tech.id) : '';
+      const techUserUuid = tech ? dbStore.toUuid(tech.profile_id) : '';
+
+      const isCustomer = reqUuid === custUuid || requestingUserId === booking.customer_id;
+      const isTechnician =
+        reqUuid === techUuid ||
+        reqUuid === techUserUuid ||
+        requestingUserId === booking.technician_id ||
+        (tech && requestingUserId === tech.profile_id);
+
+      if (!isCustomer && !isTechnician) {
+        throw new Error('Forbidden: Access denied to tracking information for this booking');
+      }
+    }
+
+    // Check lifecycle status
+    const isCompleted = booking.status === 'COMPLETED';
+    const isCancelled = booking.status === 'CANCELLED';
+    const trackingActive = !isCompleted && !isCancelled;
+
+    // Fetch latest technician location
+    let tech = dbStore.technicianProfiles.get(booking.technician_id);
+    if (!tech) {
+      tech = (await dbStore.fetchTechnicianProfileFromRemote(booking.technician_id)) || undefined;
+    }
+
+    const hasProviderCoords = Boolean(
+      tech &&
+      isValidCoordinate(tech.latitude, tech.longitude) &&
+      tech.is_location_shared
+    );
+
+    const hasCustomerCoords = Boolean(
+      isValidCoordinate(booking.latitude, booking.longitude)
+    );
+
+    // Stale detection: if last update > 5 minutes ago or technician is offline
+    const now = Date.now();
+    let isStale = false;
+    if (tech?.location_updated_at) {
+      const updateTime = new Date(tech.location_updated_at).getTime();
+      if (now - updateTime > 5 * 60 * 1000) {
+        isStale = true;
+      }
+    }
+    if (tech?.availability_status === 'OFFLINE') {
+      isStale = true;
+    }
+
+    // Calculate real distance & ETA if both coordinates exist
+    let distanceKm: number | null = null;
+    let etaMinutes: number | null = null;
+    if (hasProviderCoords && hasCustomerCoords) {
+      distanceKm = calculateHaversineDistanceKm(
+        tech!.latitude!,
+        tech!.longitude!,
+        booking.latitude!,
+        booking.longitude!
+      );
+      etaMinutes = estimateEtaMinutes(distanceKm);
+    }
+
+    let statusMessage = 'Live GPS Tracking Active';
+    if (isCompleted) {
+      statusMessage = 'Service completed. Live tracking closed.';
+    } else if (isCancelled) {
+      statusMessage = 'Service cancelled. Live tracking ended.';
+    } else if (!tech?.is_location_shared) {
+      statusMessage = 'Waiting for provider to enable location sharing.';
+    } else if (isStale) {
+      statusMessage = 'GPS signal stale. Last reported position displayed.';
+    }
+
+    return {
+      bookingId: booking.id,
+      referenceCode: booking.reference_code,
+      status: booking.status,
+      serviceTitle: booking.service_title,
+      trackingActive,
+      isStale,
+      statusMessage,
+      provider: tech
+        ? {
+            id: tech.id,
+            name: tech.name,
+            phone: tech.phone,
+            avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+            latitude: hasProviderCoords ? tech.latitude! : null,
+            longitude: hasProviderCoords ? tech.longitude! : null,
+            accuracyMeters: hasProviderCoords ? 15 : null,
+            lastUpdated: tech.location_updated_at || null,
+            isLocationShared: Boolean(tech.is_location_shared),
+          }
+        : null,
+      destination: {
+        address: booking.address,
+        latitude: hasCustomerCoords ? booking.latitude! : null,
+        longitude: hasCustomerCoords ? booking.longitude! : null,
+      },
+      distanceKm,
+      etaMinutes,
+    };
   }
 
   public static confirmBooking(bookingId: string): Booking {
@@ -368,21 +536,34 @@ export class BookingService {
     };
     dbStore.bookingEvents.set(event.id, event);
 
+    let changedByUserId = record.customer_id;
+    if (actorRole === 'TECHNICIAN') {
+      const techProfile =
+        dbStore.technicianProfiles.get(record.technician_id) ||
+        dbStore.technicianProfiles.get(dbStore.toUuid(record.technician_id)) ||
+        Array.from(dbStore.technicianProfiles.values()).find(
+          (t) => t.id === record.technician_id || dbStore.toUuid(t.id) === dbStore.toUuid(record.technician_id)
+        );
+      changedByUserId = techProfile?.profile_id || record.technician_id;
+    }
+
     const history: BookingStatusHistoryRecord = {
       id: `bsh_${Date.now()}`,
       booking_id: record.id,
       previous_status: fromStatus,
       new_status: newStatus,
-      changed_by: actorRole === 'TECHNICIAN' ? record.technician_id : record.customer_id,
+      changed_by: changedByUserId,
       reason: `Transitioned by ${actorRole}`,
       created_at: record.updated_at,
     };
     dbStore.bookingStatusHistory.set(history.id, history);
+    dbStore.syncToRemote('bookings', record);
+    dbStore.syncToRemote('booking_status_history', history);
 
     // If completed, automatically generate technician payout & earnings record (0% commission)
     if (newStatus === 'COMPLETED') {
       const est = Array.from(dbStore.estimates.values()).find((e) => e.booking_id === bookingId);
-      const payoutAmount = est ? est.total_amount : record.estimated_price;
+      const payoutAmount = Number(est?.total_amount ?? record.total_amount ?? record.estimated_price ?? record.diagnosis_fee ?? 149);
       const payout: TechnicianPayoutRecord = {
         id: `po_${Date.now()}`,
         technician_id: record.technician_id,
@@ -409,9 +590,42 @@ export class BookingService {
         created_at: new Date().toISOString(),
       };
       dbStore.technicianEarnings.set(earning.id, earning);
+      dbStore.syncToRemote('technician_earnings', earning);
     }
 
     return this.mapToFrontendBooking(record);
+  }
+
+  /**
+   * Async status update that awaits remote database sync
+   */
+  public static async updateBookingStatusAsync(
+    bookingId: string,
+    newStatus: BookingStatus,
+    actorRole: 'CUSTOMER' | 'TECHNICIAN' | 'SYSTEM'
+  ): Promise<Booking> {
+    if (!dbStore.bookings.has(bookingId)) {
+      await dbStore.fetchBookingFromRemote(bookingId);
+    }
+    const res = this.updateBookingStatus(bookingId, newStatus, actorRole);
+    const record = dbStore.bookings.get(bookingId);
+    if (record) {
+      await dbStore.syncToRemote('bookings', record);
+      const latestHistory = Array.from(dbStore.bookingStatusHistory.values())
+        .filter((h) => h.booking_id === record.id || dbStore.toUuid(h.booking_id) === dbStore.toUuid(record.id))
+        .slice(-1)[0];
+      if (latestHistory) {
+        await dbStore.syncToRemote('booking_status_history', latestHistory);
+      }
+      if (newStatus === 'COMPLETED') {
+        const earning = Array.from(dbStore.technicianEarnings.values())
+          .find((e) => e.booking_id === record.id || dbStore.toUuid(e.booking_id) === dbStore.toUuid(record.id));
+        if (earning) {
+          await dbStore.syncToRemote('technician_earnings', earning);
+        }
+      }
+    }
+    return res;
   }
 
   public static submitEstimate(
@@ -506,12 +720,30 @@ export class BookingService {
       created_at: new Date().toISOString(),
     };
     dbStore.payments.set(payment.id, payment);
+    dbStore.syncToRemote('payments', payment);
 
     if (diag) {
       diag.is_paid = true;
     }
 
     this.updateBookingStatus(bookingId, 'PAYMENT_RECEIVED', 'CUSTOMER');
+    return payment;
+  }
+
+  /**
+   * Async payment processing that awaits remote database sync
+   */
+  public static async processPaymentAsync(
+    bookingId: string,
+    requestedAmount?: number,
+    method: string = 'UPI_SANDBOX',
+    idempotencyKey?: string
+  ): Promise<PaymentRecord> {
+    if (!dbStore.bookings.has(bookingId)) {
+      await dbStore.fetchBookingFromRemote(bookingId);
+    }
+    const payment = this.processPayment(bookingId, requestedAmount, method, idempotencyKey);
+    await dbStore.syncToRemote('payments', payment);
     return payment;
   }
 
@@ -564,6 +796,7 @@ export class BookingService {
         created_at: new Date().toISOString(),
       };
       dbStore.payments.set(payment.id, payment);
+      dbStore.syncToRemote('payments', payment);
       this.updateBookingStatus(booking.id, 'CONFIRMED', 'SYSTEM');
     }
 
@@ -572,11 +805,53 @@ export class BookingService {
 
   /**
    * Retrieves technician job opportunities formatted for Technician UI
+   * Directly assigned bookings are visible ONLY to the assigned technician.
+   * Broadcast requests without explicit assignment are visible to technicians matching the service domain.
    */
   public static getTechnicianOpportunities(technicianId: string): JobOpportunity[] {
-    const allBookings = Array.from(dbStore.bookings.values()).filter(
-      (b) => b.technician_id === technicianId || b.status === 'REQUESTED'
-    );
+    const validTechIds = new Set<string>();
+    if (technicianId) {
+      validTechIds.add(technicianId);
+      const profile = dbStore.technicianProfiles.get(technicianId);
+      if (profile?.profile_id) validTechIds.add(profile.profile_id);
+      for (const [id, p] of dbStore.technicianProfiles.entries()) {
+        if (p.profile_id === technicianId || id === technicianId) {
+          validTechIds.add(id);
+          if (p.profile_id) validTechIds.add(p.profile_id);
+        }
+      }
+    }
+
+    // Technician domain skills for broadcast matching
+    const techSkills = new Set<string>();
+    for (const [_, skill] of dbStore.technicianSkills.entries()) {
+      if (validTechIds.has(skill.technician_id) && skill.active) {
+        techSkills.add(skill.skill_code.toUpperCase());
+      }
+    }
+    for (const [_, cap] of dbStore.technicianCapabilities.entries()) {
+      if (validTechIds.has(cap.technician_id) && cap.active) {
+        techSkills.add(cap.code.toUpperCase());
+      }
+    }
+
+    const allBookings = Array.from(dbStore.bookings.values()).filter((b) => {
+      if (b.status === 'CANCELLED') return false;
+
+      // 1. Directly assigned bookings: strictly visible only to the assigned provider
+      if (b.technician_id) {
+        return validTechIds.has(b.technician_id);
+      }
+
+      // 2. Unassigned/broadcast requests: visible only if requested and matches skills
+      if (b.status === 'REQUESTED') {
+        if (techSkills.size === 0) return true;
+        const titleUpper = (b.service_title || '').toUpperCase();
+        return Array.from(techSkills).some((skill) => titleUpper.includes(skill) || skill.includes(titleUpper));
+      }
+
+      return false;
+    });
 
     return allBookings.map((b) => {
       const mode = b.service_mode;
@@ -604,11 +879,82 @@ export class BookingService {
         status: b.status === 'ACCEPTED' ? 'ACCEPTED' : b.status === 'COMPLETED' ? 'COMPLETED' : 'ELIGIBLE',
         requiredCapability: 'AC_REPAIR',
         customerNameMasked: 'H*******',
-        issueDescription: b.notes || 'Service request received via voice assistant.',
+        issueDescription: b.notes || 'Service request received via customer booking.',
         serviceMode: mode,
         announcementTamil: announcementTa,
         announcementEnglish: announcementEn,
       };
     });
+  }
+
+  /**
+   * Calculates actual earnings for a technician strictly from completed jobs and recorded payouts.
+   * Returns 0s for newly registered providers without completed jobs.
+   */
+  public static getTechnicianEarnings(technicianId: string): TechnicianEarnings {
+    const validTechIds = new Set<string>();
+    if (technicianId) {
+      validTechIds.add(technicianId);
+      const profile = dbStore.technicianProfiles.get(technicianId);
+      if (profile?.profile_id) validTechIds.add(profile.profile_id);
+      for (const [id, p] of dbStore.technicianProfiles.entries()) {
+        if (p.profile_id === technicianId || id === technicianId) {
+          validTechIds.add(id);
+          if (p.profile_id) validTechIds.add(p.profile_id);
+        }
+      }
+    }
+
+    const completedBookings = Array.from(dbStore.bookings.values()).filter(
+      (b) => validTechIds.has(b.technician_id) && b.status === 'COMPLETED'
+    );
+    const payouts = Array.from(dbStore.technicianPayouts.values()).filter(
+      (p) => validTechIds.has(p.technician_id)
+    );
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfWeek = startOfToday - now.getDay() * 24 * 60 * 60 * 1000;
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+    let todayEarnings = 0;
+    let thisWeekEarnings = 0;
+    let thisMonthEarnings = 0;
+
+    for (const p of payouts) {
+      const pTime = new Date(p.processed_at || p.created_at).getTime();
+      const amt = Number(p.net_payout || p.amount || 0);
+      if (pTime >= startOfToday) todayEarnings += amt;
+      if (pTime >= startOfWeek) thisWeekEarnings += amt;
+      if (pTime >= startOfMonth) thisMonthEarnings += amt;
+    }
+
+    const recentPayouts = payouts
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 10)
+      .map((p) => {
+        const b = dbStore.bookings.get(p.booking_id);
+        return {
+          id: p.id,
+          date: new Date(p.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+          jobTitle: b?.service_title || 'Completed Service',
+          amount: p.net_payout,
+          customerMasked: 'Verified Customer',
+        };
+      });
+
+    const activeSub = Array.from(dbStore.technicianSubscriptions.values()).find(
+      (s) => validTechIds.has(s.technician_id) && s.is_active
+    );
+
+    return {
+      todayEarnings,
+      thisWeekEarnings,
+      thisMonthEarnings,
+      totalJobs: completedBookings.length,
+      platformFeeCharged: 0,
+      activeSubscriptionTitle: activeSub ? `${activeSub.plan_type} Access Pass` : 'Standard Pass',
+      recentPayouts,
+    };
   }
 }

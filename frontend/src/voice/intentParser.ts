@@ -75,8 +75,8 @@ export function parseVoiceInput(input: string, context?: ConversationContext): P
     };
   }
 
-  // 2. Technician Tracking & Location Inquiry
-  if (/technician\s*(enga|where|eppoppo)|track\s*technician|location\s*(kaatu|enga)|enga\s*irukkaru|where\s*is\s*(the\s*)?technician/i.test(text)) {
+  // 2. Technician / Service Provider Tracking & Location Inquiry
+  if (/(?:technician|service\s*provider)\s*(enga|where|eppoppo)|track\s*(?:technician|service\s*provider|pro)|location\s*(kaatu|enga)|enga\s*irukkaru|where\s*is\s*(the\s*)?(?:technician|service\s*provider)/i.test(text)) {
     return {
       actionType: 'CHECK_TECHNICIAN_LOCATION',
       rawText: input,
@@ -86,7 +86,7 @@ export function parseVoiceInput(input: string, context?: ConversationContext): P
   }
 
   // 3. Alternative Provider Request
-  if (/another\s*technician|veru\s*technician|vera\s*aalu|alternatives?|adutha\s*technician|other\s*technician/i.test(text)) {
+  if (/another\s*(?:technician|service\s*provider)|veru\s*(?:technician|service\s*provider)|vera\s*aalu|alternatives?|adutha\s*(?:technician|service\s*provider)|other\s*(?:technician|service\s*provider)/i.test(text)) {
     return {
       actionType: 'SHOW_ALTERNATIVES',
       rawText: input,
@@ -192,9 +192,9 @@ export function parseVoiceInput(input: string, context?: ConversationContext): P
   }
 
   // 7. Role and Language Switching
-  // Role Switch to Technician Mode
+  // Role Switch to Technician / Service Provider Mode
   if (
-    /(?:technician\s*(?:mode|பயன்முறை)(?:\s*(?:-?ku|uku))?\s*(?:maathu|change|switch)|switch\s*to\s*technician(?:\s*mode)?|technician-?ah\s*maathu|டெக்னீஷியன்\s*(?:mode|பயன்முறை)(?:\s*மாத்து)?|(?:டெக்னிஷியன்|டெக்னீஷியன்|technician)\s*(?:mode|மோடு|பயன்முறை)(?:\s*(?:-?க்கு|க்கு|-?ku|uku))?\s*(?:போ|மாத்து|மாற்று|change|switch|go))/i.test(
+    /(?:(?:technician|service\s*provider)\s*(?:mode|பயன்முறை)(?:\s*(?:-?ku|uku))?\s*(?:maathu|change|switch)|switch\s*to\s*(?:technician|service\s*provider)(?:\s*mode)?|(?:technician|service\s*provider)-?ah\s*maathu|டெக்னீஷியன்\s*(?:mode|பயன்முறை)(?:\s*மாத்து)?|(?:டெக்னிஷியன்|டெக்னீஷியன்|technician|service\s*provider)\s*(?:mode|மோடு|பயன்முறை)(?:\s*(?:-?க்கு|க்கு|-?ku|uku))?\s*(?:போ|மாத்து|மாற்று|change|switch|go))/i.test(
       text
     )
   ) {
@@ -268,7 +268,7 @@ export function parseVoiceInput(input: string, context?: ConversationContext): P
 
   // D. Providers / Technicians Navigation (Customer)
   if (
-    /(?:^|\b)(?:technicians?(?:-?a|-?galai|-?kalai)?\s*(?:kaatu|show|thedu)|show\s*technicians?|find\s*(?:a\s*)?technicians?|search\s*(?:a\s*)?technicians?|டெக்னீஷியன்களை\s*காட்டு|டெக்னீஷியனை\s*காட்டு|டெக்னீஷியன்\s*காட்டு|(?:டெக்னிஷியன்|டெக்னீஷியன்|டெக்னீசியன்)(?:களை|ை)?\s*(?:தேடு|காட்டு|பார்|பாரு|find|show|thedu))(?:$|\b)/i.test(
+    /(?:^|\b)(?:(?:technicians?|service\s*providers?)(?:-?a|-?galai|-?kalai)?\s*(?:kaatu|show|thedu)|show\s*(?:technicians?|service\s*providers?)|find\s*(?:a\s*)?(?:technicians?|service\s*providers?)|search\s*(?:a\s*)?(?:technicians?|service\s*providers?)|டெக்னீஷியன்களை\s*காட்டு|டெக்னீஷியனை\s*காட்டு|டெக்னீஷியன்\s*காட்டு|(?:டெக்னிஷியன்|டெக்னீஷியன்|டெக்னீசியன்)(?:களை|ை)?\s*(?:தேடு|காட்டு|பார்|பாரு|find|show|thedu))(?:$|\b)/i.test(
       text
     )
   ) {

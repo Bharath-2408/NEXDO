@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Power } from 'lucide-react';
+import { Bell, Power, Navigation, AlertCircle } from 'lucide-react';
 import { useTechnician } from '../../store/TechnicianContext';
 import { OpportunityCard } from '../../components/technician/OpportunityCard';
 import { VoiceAnnouncementBanner } from '../../components/technician/VoiceAnnouncementBanner';
@@ -13,6 +13,10 @@ export const TechnicianHomePage: React.FC = () => {
     rejectOpportunity,
     isOnline,
     toggleOnline,
+    isLocationSharing,
+    currentLocation,
+    locationError,
+    toggleLocationSharing,
     earnings,
     capabilities,
   } = useTechnician();
@@ -27,7 +31,7 @@ export const TechnicianHomePage: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-extrabold text-[#071A36]">
-              Technician Operations
+              Service Provider Dashboard
             </h2>
             <span
               className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
@@ -62,6 +66,49 @@ export const TechnicianHomePage: React.FC = () => {
         </div>
       </div>
 
+      {/* 2. Live GPS Broadcasting Card */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className={`p-2.5 rounded-xl ${isLocationSharing ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+            <Navigation className={`w-5 h-5 ${isLocationSharing ? 'animate-pulse' : ''}`} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-bold text-[#071A36]">Live GPS Location Broadcast</h4>
+              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                isLocationSharing ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
+              }`}>
+                {isLocationSharing ? 'Broadcasting Active' : 'Off'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {isLocationSharing
+                ? currentLocation?.accuracy
+                  ? `Broadcasting GPS coordinates (accuracy ±${Math.round(currentLocation.accuracy)}m)`
+                  : 'Broadcasting live location for assigned bookings'
+                : 'Turn on to broadcast your real-time ETA and location to customers with active bookings.'}
+            </p>
+            {locationError && (
+              <p className="text-xs text-amber-600 font-semibold mt-1 flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span>{locationError}</span>
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <Button
+            size="sm"
+            variant={isLocationSharing ? 'outline' : 'primary'}
+            disabled={!isOnline}
+            onClick={() => toggleLocationSharing()}
+          >
+            {isLocationSharing ? 'Stop Location Sharing' : 'Share My Live Location'}
+          </Button>
+        </div>
+      </div>
+
       {/* 2. Voice Announcement Banner */}
       {opportunities.length > 0 && (
         <VoiceAnnouncementBanner
@@ -76,10 +123,10 @@ export const TechnicianHomePage: React.FC = () => {
         <div className="flex items-center justify-between mb-3">
           <div>
             <h3 className="text-base font-extrabold text-[#071A36]">
-              Eligible Service Opportunities ({opportunities.length})
+              Available Service Requests ({opportunities.length})
             </h3>
             <p className="text-xs text-slate-500">
-              Demand-based requests. Acceptance is first-response among verified technicians.
+              Demand-based requests. Acceptance is first-response among verified service providers.
             </p>
           </div>
         </div>
@@ -87,7 +134,7 @@ export const TechnicianHomePage: React.FC = () => {
         {opportunities.length === 0 ? (
           <div className="py-12 text-center bg-white rounded-xl border border-slate-200 shadow-2xs">
             <Bell className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-            <p className="text-sm font-bold text-slate-700">No new requests in your area right now</p>
+            <p className="text-sm font-bold text-slate-700">No new service requests</p>
             <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
               Keep your status Online. New customer requests will broadcast with voice announcements.
             </p>

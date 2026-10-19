@@ -15,6 +15,8 @@ import { PresenceService } from './services/presenceService';
 import { dbStore } from './database/store';
 import { ServiceRequestRecord } from './database/types';
 import { checkSupabaseConnection } from './database/supabaseClient';
+import { RateLimiter, RateLimitError } from './services/authSecurity';
+import { isValidCoordinate } from '../utils/geoUtils';
 
 export interface ApiRequest {
   method: string;
@@ -30,7 +32,8 @@ export interface ApiResponse {
 }
 
 export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiResponse> {
-  const parsedUrl = new URL(req.url, 'http://localhost');
+  const rawUrl = req.url || (req as any).path || '/';
+  const parsedUrl = new URL(rawUrl, 'http://localhost');
   const path = parsedUrl.pathname;
   const method = req.method.toUpperCase();
   const searchParams = parsedUrl.searchParams;
@@ -72,7 +75,7 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
   };
 
   const sessionToken = extractSessionToken();
-  const authContext = AuthService.validateSession(sessionToken);
+  const authContext = await AuthService.validateSessionAsync(sessionToken);
 
   try {
     // ------------------------------------------------------------------------
@@ -96,20 +99,28 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
     // ------------------------------------------------------------------------
     if (path === '/api/auth/register' && method === 'POST') {
       const data = req.body || {};
-      const result = AuthService.register({
+      const clientIp = getHeader('x-forwarded-for') || '127.0.0.1';
+      RateLimiter.checkRegister(data.phone || data.email || data.username || '', clientIp);
+
+      const result = await AuthService.registerAsync({
         phone: data.phone,
+        username: data.username,
         password: data.password,
+        confirmPassword: data.confirmPassword,
+        firstName: data.firstName,
+        lastName: data.lastName,
         name: data.name,
         role: data.role,
         email: data.email,
         serviceArea: data.serviceArea,
+        serviceDomains: data.serviceDomains,
       });
 
       return {
         status: 201,
         headers: {
           ...defaultHeaders,
-          'Set-Cookie': `__Host-nexdo_session=${result.sessionToken}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800`,
+          'Set-Cookie': `nexdo_session=${result.sessionToken}; Path=/; SameSite=Lax; Max-Age=604800`,
         },
         body: result,
       };
@@ -117,18 +128,25 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
 
     if (path === '/api/auth/login' && method === 'POST') {
       const data = req.body || {};
-      const result = AuthService.login({
+      const clientIp = getHeader('x-forwarded-for') || '127.0.0.1';
+
+      const result = await AuthService.loginAsync({
+        identifier: data.identifier,
         phone: data.phone,
+        email: data.email,
+        username: data.username,
+        loginMethod: data.loginMethod,
+        expectedRole: data.expectedRole || data.role,
         password: data.password,
-        ipAddress: req.headers?.['x-forwarded-for'] || '127.0.0.1',
-        userAgent: req.headers?.['user-agent'],
+        ipAddress: clientIp,
+        userAgent: getHeader('user-agent'),
       });
 
       return {
         status: 200,
         headers: {
           ...defaultHeaders,
-          'Set-Cookie': `__Host-nexdo_session=${result.sessionToken}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800`,
+          'Set-Cookie': `nexdo_session=${result.sessionToken}; Path=/; SameSite=Lax; Max-Age=604800`,
         },
         body: result,
       };
@@ -155,13 +173,18 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
 
     if (path === '/api/auth/logout' && method === 'POST') {
       if (sessionToken) {
-        AuthService.logout(sessionToken);
+        if (authContext?.user?.role === 'TECHNICIAN') {
+          const tp = dbStore.getTechnicianProfileByUserId(authContext.user.id);
+          const tId = tp?.id || authContext.user.id;
+          await dbStore.stopTechnicianLocationSharingAsync(tId);
+        }
+        await AuthService.logoutAsync(sessionToken);
       }
       return {
         status: 200,
         headers: {
           ...defaultHeaders,
-          'Set-Cookie': `__Host-nexdo_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`,
+          'Set-Cookie': `nexdo_session=; Path=/; SameSite=Lax; Max-Age=0`,
         },
         body: { success: true },
       };
@@ -169,13 +192,41 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
 
     if (path === '/api/auth/forgot-password' && method === 'POST') {
       const data = req.body || {};
-      const result = AuthService.requestPasswordReset(data.phone);
+      const clientIp = getHeader('x-forwarded-for') || '127.0.0.1';
+      const identifier = (data.identifier || data.email || data.phone || '').trim();
+      const isEmail = identifier.includes('@');
+      const email = isEmail ? identifier : (data.email || undefined);
+      const phone = !isEmail && identifier ? identifier : (data.phone || undefined);
+
+      const result = await AuthService.requestPasswordResetAsync(
+        { email, phone },
+        clientIp
+      );
+      return { status: 200, headers: defaultHeaders, body: result };
+    }
+
+    if (path === '/api/auth/verify-otp' && method === 'POST') {
+      const data = req.body || {};
+      const clientIp = getHeader('x-forwarded-for') || '127.0.0.1';
+      const identifier = (data.identifier || data.email || data.phone || '').trim();
+      const isEmail = identifier.includes('@');
+      const email = isEmail ? identifier : (data.email || undefined);
+      const phone = !isEmail && identifier ? identifier : (data.phone || undefined);
+
+      const result = AuthService.verifyPasswordResetOtp({
+        email,
+        phone,
+        otp: data.otp,
+        ipAddress: clientIp,
+      });
       return { status: 200, headers: defaultHeaders, body: result };
     }
 
     if (path === '/api/auth/reset-password' && method === 'POST') {
       const data = req.body || {};
-      const success = AuthService.resetPassword(data.token, data.password);
+      const clientIp = getHeader('x-forwarded-for') || '127.0.0.1';
+      RateLimiter.checkResetPassword(clientIp);
+      const success = await AuthService.resetPasswordAsync(data.token, data.password);
       return { status: 200, headers: defaultHeaders, body: { success } };
     }
 
@@ -197,6 +248,7 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
         authContext?.user?.id ||
         't0000001-0000-0000-0000-000000000001';
       const updated = PresenceService.setOffline(techId);
+      await dbStore.stopTechnicianLocationSharingAsync(techId);
       return { status: 200, headers: defaultHeaders, body: { technician: updated } };
     }
 
@@ -207,6 +259,85 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
         't0000001-0000-0000-0000-000000000001';
       const result = PresenceService.heartbeat(techId);
       return { status: 200, headers: defaultHeaders, body: result };
+    }
+
+    // POST /api/technician/location: Update real GPS location
+    if (path === '/api/technician/location' && method === 'POST') {
+      if (!authContext) {
+        return { status: 401, headers: defaultHeaders, body: { error: 'Authentication required' } };
+      }
+      if (authContext.user.role !== 'TECHNICIAN') {
+        return { status: 403, headers: defaultHeaders, body: { error: 'Forbidden: Service Provider role required' } };
+      }
+
+      const data = req.body || {};
+      const { latitude, longitude, accuracy, speed, heading } = data;
+
+      if (!isValidCoordinate(latitude, longitude)) {
+        return {
+          status: 400,
+          headers: defaultHeaders,
+          body: { error: 'Invalid latitude or longitude coordinates provided' },
+        };
+      }
+
+      const tp = dbStore.getTechnicianProfileByUserId(authContext.user.id);
+      const targetTechId = tp?.id || authContext.user.id;
+
+      // Ensure technician is marked online when actively broadcasting location
+      PresenceService.setOnline(targetTechId);
+
+      const updated = await dbStore.updateTechnicianLocationAsync(targetTechId, {
+        latitude: Number(latitude),
+        longitude: Number(longitude),
+        accuracy_meters: accuracy !== undefined && accuracy !== null ? Number(accuracy) : null,
+        speed_mps: speed !== undefined && speed !== null ? Number(speed) : null,
+        heading_degrees: heading !== undefined && heading !== null ? Number(heading) : null,
+      });
+
+      return {
+        status: 200,
+        headers: defaultHeaders,
+        body: {
+          success: true,
+          recordedAt: new Date().toISOString(),
+          technicianId: targetTechId,
+          latitude: updated?.latitude,
+          longitude: updated?.longitude,
+          isLocationShared: updated?.is_location_shared,
+        },
+      };
+    }
+
+    // POST /api/technician/location/toggle: Enable or disable live GPS sharing
+    if (path === '/api/technician/location/toggle' && method === 'POST') {
+      if (!authContext) {
+        return { status: 401, headers: defaultHeaders, body: { error: 'Authentication required' } };
+      }
+      if (authContext.user.role !== 'TECHNICIAN') {
+        return { status: 403, headers: defaultHeaders, body: { error: 'Forbidden: Service Provider role required' } };
+      }
+
+      const enabled = Boolean(req.body?.enabled);
+      const tp = dbStore.getTechnicianProfileByUserId(authContext.user.id);
+      const targetTechId = tp?.id || authContext.user.id;
+
+      if (!enabled) {
+        await dbStore.stopTechnicianLocationSharingAsync(targetTechId);
+      } else {
+        const currentTech = dbStore.technicianProfiles.get(targetTechId);
+        if (currentTech) {
+          currentTech.is_location_shared = true;
+          currentTech.updated_at = new Date().toISOString();
+          await dbStore.syncToRemote('technician_profiles', currentTech);
+        }
+      }
+
+      return {
+        status: 200,
+        headers: defaultHeaders,
+        body: { success: true, isLocationShared: enabled },
+      };
     }
 
     // ------------------------------------------------------------------------
@@ -283,7 +414,7 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
         updated_at: new Date().toISOString(),
       };
       dbStore.serviceRequests.set(newReq.id, newReq);
-      dbStore.syncToRemote('service_requests', newReq);
+      await dbStore.syncToRemote('service_requests', newReq);
 
       const matchedTechs = TechnicianMatchingService.searchTechnicians({
         serviceCode: newReq.service_code,
@@ -307,11 +438,46 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
       const serviceCode = searchParams.get('serviceCode') || searchParams.get('service') || undefined;
       const area = searchParams.get('area') || undefined;
       const serviceMode = (searchParams.get('serviceMode') as any) || undefined;
+      const latParam = searchParams.get('lat') || searchParams.get('latitude');
+      const lngParam = searchParams.get('lng') || searchParams.get('lon') || searchParams.get('longitude');
+      const radiusParam = searchParams.get('radiusKm') || searchParams.get('radius');
 
-      const technicians = TechnicianMatchingService.searchTechnicians({
+      const latitude = latParam && !isNaN(Number(latParam)) ? Number(latParam) : undefined;
+      const longitude = lngParam && !isNaN(Number(lngParam)) ? Number(lngParam) : undefined;
+      const radiusKm = radiusParam && !isNaN(Number(radiusParam)) ? Number(radiusParam) : undefined;
+
+      const technicians = await TechnicianMatchingService.searchTechniciansAsync({
         serviceCode,
         area,
         serviceMode,
+        latitude,
+        longitude,
+        radiusKm,
+      });
+
+      return { status: 200, headers: defaultHeaders, body: { technicians } };
+    }
+
+    // GET /api/technicians/nearby: Real GPS coordinate nearby query
+    if (path === '/api/technicians/nearby' && method === 'GET') {
+      const latParam = searchParams.get('lat') || searchParams.get('latitude');
+      const lngParam = searchParams.get('lng') || searchParams.get('lon') || searchParams.get('longitude');
+      const radiusParam = searchParams.get('radiusKm') || searchParams.get('radius');
+      const serviceCode = searchParams.get('serviceCode') || searchParams.get('service') || undefined;
+
+      if (!latParam || !lngParam || isNaN(Number(latParam)) || isNaN(Number(lngParam))) {
+        return {
+          status: 400,
+          headers: defaultHeaders,
+          body: { error: 'Valid latitude and longitude query parameters are required' },
+        };
+      }
+
+      const technicians = await TechnicianMatchingService.searchNearbyTechniciansAsync({
+        latitude: Number(latParam),
+        longitude: Number(lngParam),
+        radiusKm: radiusParam ? Number(radiusParam) : 25,
+        serviceCode,
       });
 
       return { status: 200, headers: defaultHeaders, body: { technicians } };
@@ -373,14 +539,22 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
     const singleBookingMatch = path.match(/^\/api\/bookings\/([^/]+)$/);
     if (singleBookingMatch && method === 'GET') {
       const bookingId = singleBookingMatch[1];
-      const booking = BookingService.getBookingById(bookingId);
+      let booking = BookingService.getBookingById(bookingId);
+      if (!booking) {
+        const remote = await dbStore.fetchBookingFromRemote(bookingId);
+        if (remote) {
+          booking = BookingService.mapToFrontendBooking(remote);
+        }
+      }
       if (!booking) {
         return { status: 404, headers: defaultHeaders, body: { error: 'Booking not found' } };
       }
 
       // IDOR Protection: Customer cannot view another customer's booking
       if (authContext && authContext.user.role === 'CUSTOMER') {
-        if (booking.customerId !== authContext.user.id) {
+        const custIdUuid = dbStore.toUuid(authContext.user.id);
+        const bookingCustUuid = dbStore.toUuid(booking.customerId);
+        if (bookingCustUuid !== custIdUuid && booking.customerId !== authContext.user.id) {
           return {
             status: 403,
             headers: defaultHeaders,
@@ -390,6 +564,22 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
       }
 
       return { status: 200, headers: defaultHeaders, body: { booking } };
+    }
+
+    // GET /api/bookings/:id/tracking (Secure Live Tracking)
+    const trackingMatch = path.match(/^\/api\/bookings\/([^/]+)\/tracking$/);
+    if (trackingMatch && method === 'GET') {
+      const bookingId = trackingMatch[1];
+      const requestingUserId = authContext?.user?.id;
+      const requestingRole = authContext?.user?.role;
+
+      const tracking = await BookingService.getBookingTrackingDetailsAsync(
+        bookingId,
+        requestingUserId,
+        requestingRole
+      );
+
+      return { status: 200, headers: defaultHeaders, body: { tracking } };
     }
 
     if (path === '/api/bookings' && method === 'POST') {
@@ -411,7 +601,10 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
       const idempotencyKey =
         getHeader('X-Idempotency-Key') || data.idempotencyKey || undefined;
 
-      const booking = BookingService.createBooking({
+      const latitude = data.latitude !== undefined && data.latitude !== null ? Number(data.latitude) : undefined;
+      const longitude = data.longitude !== undefined && data.longitude !== null ? Number(data.longitude) : undefined;
+
+      const booking = await BookingService.createBookingAsync({
         customerId,
         technicianId: data.technicianId,
         serviceTitle: data.serviceTitle || 'Service Request',
@@ -419,10 +612,13 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
         appointmentDate: data.appointmentDate,
         appointmentTime: data.appointmentTime,
         address: data.address || 'Chennai',
+        latitude,
+        longitude,
         serviceMode: data.serviceMode || 'DIAGNOSIS',
         notes: data.notes,
         estimatedPrice: data.estimatedPrice,
         idempotencyKey,
+        status: data.status,
       });
 
       return { status: 201, headers: defaultHeaders, body: { booking } };
@@ -432,7 +628,7 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
     const confirmMatch = path.match(/^\/api\/bookings\/([^/]+)\/confirm$/);
     if (confirmMatch && method === 'POST') {
       const bookingId = confirmMatch[1];
-      const updated = BookingService.confirmBooking(bookingId);
+      const updated = await BookingService.updateBookingStatusAsync(bookingId, 'CONFIRMED', 'CUSTOMER');
       return { status: 200, headers: defaultHeaders, body: { booking: updated } };
     }
 
@@ -471,32 +667,88 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
     // POST /api/technician/jobs/:id/accept
     const acceptMatch = path.match(/^\/api\/technician\/jobs\/([^/]+)\/accept$/);
     if (acceptMatch && method === 'POST') {
+      if (authContext && authContext.user.role !== 'TECHNICIAN') {
+        return { status: 403, headers: defaultHeaders, body: { error: 'Forbidden: Technician role required' } };
+      }
       const jobId = acceptMatch[1];
-      const updated = BookingService.updateBookingStatus(jobId, 'ACCEPTED', 'TECHNICIAN');
+      const existing = dbStore.bookings.get(jobId);
+      if (!existing) {
+        return { status: 404, headers: defaultHeaders, body: { error: 'Booking not found' } };
+      }
+      // Concurrency conflict check: prevent duplicate acceptance
+      if (existing.status !== 'REQUESTED') {
+        return {
+          status: 409,
+          headers: defaultHeaders,
+          body: { error: 'Conflict: This booking has already been accepted or is no longer available' },
+        };
+      }
+      // Enforce exclusive technician assignment if directly booked
+      if (authContext) {
+        const tp = dbStore.getTechnicianProfileByUserId(authContext.user.id);
+        const myTechId = tp?.id || authContext.user.id;
+        if (existing.technician_id && existing.technician_id !== myTechId && existing.technician_id !== authContext.user.id) {
+          return {
+            status: 403,
+            headers: defaultHeaders,
+            body: { error: 'Forbidden: This booking is assigned to another service provider' },
+          };
+        }
+      }
+      const updated = await BookingService.updateBookingStatusAsync(jobId, 'ACCEPTED', 'TECHNICIAN');
       return { status: 200, headers: defaultHeaders, body: { job: updated } };
+    }
+
+    if (path === '/api/technician/earnings' && method === 'GET') {
+      const requestedTechId = searchParams.get('technicianId');
+      let targetTechId = requestedTechId || 't0000001-0000-0000-0000-000000000001';
+
+      if (authContext && authContext.user.role === 'TECHNICIAN') {
+        const tp = dbStore.getTechnicianProfileByUserId(authContext.user.id);
+        targetTechId = tp?.id || authContext.user.id;
+        if (requestedTechId && requestedTechId !== targetTechId) {
+          return {
+            status: 403,
+            headers: defaultHeaders,
+            body: { error: 'Forbidden: Access denied to other technician earnings' },
+          };
+        }
+      }
+
+      const earnings = BookingService.getTechnicianEarnings(targetTechId);
+      return { status: 200, headers: defaultHeaders, body: { earnings } };
     }
 
     // POST /api/technician/jobs/:id/arrive
     const arriveMatch = path.match(/^\/api\/technician\/jobs\/([^/]+)\/arrive$/);
     if (arriveMatch && method === 'POST') {
+      if (authContext && authContext.user.role !== 'TECHNICIAN') {
+        return { status: 403, headers: defaultHeaders, body: { error: 'Forbidden: Technician role required' } };
+      }
       const jobId = arriveMatch[1];
-      const updated = BookingService.updateBookingStatus(jobId, 'ARRIVED', 'TECHNICIAN');
+      const updated = await BookingService.updateBookingStatusAsync(jobId, 'ARRIVED', 'TECHNICIAN');
       return { status: 200, headers: defaultHeaders, body: { job: updated } };
     }
 
     // POST /api/technician/jobs/:id/start
     const startMatch = path.match(/^\/api\/technician\/jobs\/([^/]+)\/start$/);
     if (startMatch && method === 'POST') {
+      if (authContext && authContext.user.role !== 'TECHNICIAN') {
+        return { status: 403, headers: defaultHeaders, body: { error: 'Forbidden: Technician role required' } };
+      }
       const jobId = startMatch[1];
-      const updated = BookingService.updateBookingStatus(jobId, 'WORK_IN_PROGRESS', 'TECHNICIAN');
+      const updated = await BookingService.updateBookingStatusAsync(jobId, 'WORK_IN_PROGRESS', 'TECHNICIAN');
       return { status: 200, headers: defaultHeaders, body: { job: updated } };
     }
 
     // POST /api/technician/jobs/:id/complete
     const completeMatch = path.match(/^\/api\/technician\/jobs\/([^/]+)\/complete$/);
     if (completeMatch && method === 'POST') {
+      if (authContext && authContext.user.role !== 'TECHNICIAN') {
+        return { status: 403, headers: defaultHeaders, body: { error: 'Forbidden: Technician role required' } };
+      }
       const jobId = completeMatch[1];
-      const updated = BookingService.updateBookingStatus(jobId, 'COMPLETED', 'TECHNICIAN');
+      const updated = await BookingService.updateBookingStatusAsync(jobId, 'COMPLETED', 'TECHNICIAN');
       return { status: 200, headers: defaultHeaders, body: { job: updated } };
     }
 
@@ -526,7 +778,7 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
       const idempotencyKey =
         getHeader('X-Idempotency-Key') || data.idempotencyKey || undefined;
 
-      const payment = BookingService.processPayment(
+      const payment = await BookingService.processPaymentAsync(
         bookingId,
         data.amount,
         data.method,
@@ -553,10 +805,53 @@ export async function handleNexdoApiRequest(req: ApiRequest): Promise<ApiRespons
       body: { error: `Endpoint not found: ${method} ${path}` },
     };
   } catch (err: any) {
+    if (err instanceof RateLimitError || err?.name === 'RateLimitError' || err?.status === 429) {
+      return {
+        status: 429,
+        headers: {
+          ...defaultHeaders,
+          'Retry-After': String(err.retryAfterSeconds || 60),
+        },
+        body: {
+          error: err.message || 'Too many requests. Please wait before trying again.',
+          retryAfterSeconds: err.retryAfterSeconds || 60,
+        },
+      };
+    }
+
+    const msg = err.message || '';
+    let status = err.status || 500;
+    if (
+      msg.includes('Invalid mobile number') ||
+      msg.includes('Invalid email address') ||
+      msg.includes('Invalid username') ||
+      msg.includes('Invalid credentials') ||
+      msg.includes('Invalid password') ||
+      msg.includes('WrongPassword') ||
+      msg.includes('Unknown user')
+    ) {
+      status = 401;
+    } else if (
+      msg.includes('Invalid verification') ||
+      msg.includes('Maximum verification attempts') ||
+      msg.includes('Verification code has expired') ||
+      msg.includes('already been used') ||
+      msg.includes('required') ||
+      msg.includes('must be') ||
+      msg.includes('already registered') ||
+      msg.includes('already taken') ||
+      msg.includes('Username cannot') ||
+      msg.includes('Passwords do not match')
+    ) {
+      status = 400;
+    } else if (msg.includes('Forbidden') || msg.includes('Access denied') || msg.includes('Role mismatch')) {
+      status = 403;
+    }
+
     return {
-      status: 500,
+      status,
       headers: defaultHeaders,
-      body: { error: err.message || 'Internal Server Error' },
+      body: { error: msg || 'Internal Server Error' },
     };
   }
 }

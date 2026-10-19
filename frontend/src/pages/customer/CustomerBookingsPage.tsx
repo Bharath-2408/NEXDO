@@ -62,7 +62,7 @@ export const CustomerBookingsPage: React.FC = () => {
         <div className="py-12 text-center bg-white rounded-3xl border border-slate-200">
           <Calendar className="w-10 h-10 text-slate-300 mx-auto mb-2" />
           <p className="text-sm font-bold text-slate-700">No {activeTab} bookings found</p>
-          <p className="text-xs text-slate-400 mt-1">Tell NEXDO what you need to book a verified technician.</p>
+          <p className="text-xs text-slate-400 mt-1">Tell NEXDO what you need to book a verified service provider.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -90,7 +90,7 @@ export const CustomerBookingsPage: React.FC = () => {
                   </div>
                   <h4 className="text-base font-bold text-[#071A36] mt-1">{bk.serviceTitle}</h4>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Pro: <span className="font-semibold text-slate-800">{bk.provider.name}</span> · {bk.scheduledTime}
+                    Service Provider: <span className="font-semibold text-slate-800">{bk.provider.name}</span> · {bk.scheduledTime}
                   </p>
                 </div>
               </div>

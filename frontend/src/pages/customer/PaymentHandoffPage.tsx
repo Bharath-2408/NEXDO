@@ -151,7 +151,7 @@ export const PaymentHandoffPage: React.FC = () => {
                   {booking.finalOtp?.code || '8942'}
                 </div>
                 <p className="text-xs text-blue-800 leading-relaxed max-w-sm mx-auto">
-                  Provide this 4-digit code to your technician <strong>after verifying</strong> the repair to release their payout.
+                  Provide this 4-digit code to your service provider <strong>after verifying</strong> the repair to release their payout.
                 </p>
               </div>
 
@@ -161,12 +161,12 @@ export const PaymentHandoffPage: React.FC = () => {
                   <span className="font-semibold text-slate-800">{booking.serviceTitle}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Technician:</span>
+                  <span>Service Provider:</span>
                   <span className="font-semibold text-slate-800">{booking.provider.name}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Platform Commission:</span>
-                  <span className="font-bold text-emerald-700">₹0 (100% credited to Pro)</span>
+                  <span className="font-bold text-emerald-700">₹0 (100% credited to Service Provider)</span>
                 </div>
               </div>
 
@@ -286,7 +286,7 @@ export const PaymentHandoffPage: React.FC = () => {
                       </div>
                     </div>
                     <span className="text-[10px] font-bold text-blue-600 block mt-2">
-                      Scan on Technician Device
+                      Scan on Service Provider Device
                     </span>
                   </div>
 
@@ -399,7 +399,7 @@ export const PaymentHandoffPage: React.FC = () => {
               </div>
               <div className="flex items-center gap-1 text-xs font-semibold text-emerald-700">
                 <UserCheck className="w-3.5 h-3.5" />
-                <span>Verified Pro</span>
+                <span>Verified Service Provider</span>
               </div>
             </div>
 
@@ -415,7 +415,7 @@ export const PaymentHandoffPage: React.FC = () => {
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>Platform Commission:</span>
-                <span className="font-bold text-emerald-700">₹0 (100% to Pro)</span>
+                <span className="font-bold text-emerald-700">₹0 (100% to Service Provider)</span>
               </div>
               <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-sm font-extrabold text-[#071A36]">
                 <span>Total Amount Due:</span>
@@ -431,7 +431,7 @@ export const PaymentHandoffPage: React.FC = () => {
               <span>NEXDO Direct Payout Guarantee</span>
             </div>
             <p className="text-[11px] leading-relaxed text-emerald-800">
-              NEXDO charges 0% platform commission on services. The full ₹{payableAmount} will be credited directly to your technician's wallet upon Final OTP verification.
+              NEXDO charges 0% platform commission on services. The full ₹{payableAmount} will be credited directly to your service provider's wallet upon Final OTP verification.
             </p>
           </div>
         </div>

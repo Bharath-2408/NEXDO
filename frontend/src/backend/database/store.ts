@@ -63,7 +63,9 @@ export class NexdoDatabaseStore {
   public payments: Map<string, PaymentRecord> = new Map();
   public subscriptions: Map<string, TechnicianSubscriptionRecord> = new Map();
   public technicianEarnings: Map<string, TechnicianEarningsRecord> = new Map();
+  public technicianLocations: Map<string, any> = new Map();
   public auditLogs: Map<string, AuditLogRecord> = new Map();
+  public revokedTokenHashes: Set<string> = new Set();
 
   // Backward compatibility legacy stores
   public profiles: Map<string, ProfileRecord> = new Map();
@@ -164,6 +166,15 @@ export class NexdoDatabaseStore {
     return undefined;
   }
 
+  public getUserByUsername(username: string): UserRecord | undefined {
+    const cleanUsername = username.toLowerCase().trim();
+    if (!cleanUsername) return undefined;
+    for (const u of this.users.values()) {
+      if (u.username && u.username.toLowerCase().trim() === cleanUsername) return u;
+    }
+    return undefined;
+  }
+
   public getUserById(id: string): UserRecord | undefined {
     return this.users.get(id);
   }
@@ -176,15 +187,27 @@ export class NexdoDatabaseStore {
   }
 
   public getCustomerProfileByUserId(userId: string): CustomerProfileRecord | undefined {
+    const targetUuid = this.toUuid(userId);
     for (const cp of this.customerProfiles.values()) {
-      if (cp.user_id === userId) return cp;
+      if (
+        cp.user_id === userId ||
+        this.toUuid(cp.user_id) === targetUuid ||
+        cp.id === userId ||
+        this.toUuid(cp.id) === targetUuid
+      ) return cp;
     }
     return undefined;
   }
 
   public getTechnicianProfileByUserId(userId: string): TechnicianProfileRecord | undefined {
+    const targetUuid = this.toUuid(userId);
     for (const tp of this.technicianProfiles.values()) {
-      if (tp.profile_id === userId) return tp;
+      if (
+        tp.profile_id === userId ||
+        this.toUuid(tp.profile_id) === targetUuid ||
+        tp.id === userId ||
+        this.toUuid(tp.id) === targetUuid
+      ) return tp;
     }
     return undefined;
   }
@@ -217,17 +240,933 @@ export class NexdoDatabaseStore {
   }
 
   /**
-   * Asynchronously synchronizes record to live Supabase PostgreSQL table when configured
+   * Converts any string ID into a deterministic, valid RFC 4122 UUID for PostgreSQL
    */
-  public syncToRemote(table: string, data: Record<string, any>): void {
-    if (isSupabaseConfigured) {
+  public toUuid(id?: string): string {
+    if (!id) {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+      return '10000000-0000-4000-8000-000000000000'.replace(/[018]/g, (c: any) =>
+        (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)
+      );
+    }
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      return id.toLowerCase();
+    }
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) {
+      hash = (hash << 5) - hash + id.charCodeAt(i);
+      hash |= 0;
+    }
+    const hex = Math.abs(hash).toString(16).padStart(8, '0') + id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24).padEnd(24, '0');
+    const safeHex = hex.replace(/[^0-9a-f]/gi, '0').padEnd(32, '0').slice(0, 32);
+    return `${safeHex.slice(0, 8)}-${safeHex.slice(8, 12)}-4${safeHex.slice(13, 16)}-a${safeHex.slice(17, 20)}-${safeHex.slice(20, 32)}`.toLowerCase();
+  }
+
+  /**
+   * Formats record payload to match Supabase PostgreSQL schema precisely
+   */
+  public formatForSupabase(table: string, data: Record<string, any>): Record<string, any> {
+    const d = { ...data };
+    if (d.id) d.id = this.toUuid(d.id);
+
+    if (table === 'users') {
+      const payload: Record<string, any> = {
+        id: d.id,
+        email: d.email || null,
+        phone: d.phone,
+        password_hash: d.password_hash,
+        role: d.role,
+        status: d.status || 'ACTIVE',
+        email_verified: Boolean(d.email_verified),
+        phone_verified: Boolean(d.phone_verified),
+        last_login_at: d.last_login_at || new Date().toISOString(),
+        created_at: d.created_at || new Date().toISOString(),
+        updated_at: d.updated_at || new Date().toISOString(),
+      };
+      if (d.username) {
+        payload.username = String(d.username).toLowerCase().trim();
+      }
+      if (d.first_name !== undefined) {
+        payload.first_name = d.first_name;
+      }
+      if (d.last_name !== undefined) {
+        payload.last_name = d.last_name;
+      }
+      return payload;
+    }
+
+    if (table === 'sessions') {
+      return {
+        id: d.id,
+        user_id: this.toUuid(d.user_id),
+        session_token_hash: d.session_token_hash,
+        ip_address: d.ip_address || null,
+        user_agent: d.user_agent || null,
+        expires_at: d.expires_at,
+        last_active_at: d.last_active_at || new Date().toISOString(),
+        created_at: d.created_at || new Date().toISOString(),
+      };
+    }
+
+    if (table === 'customer_profiles') {
+      const payload: Record<string, any> = {
+        id: d.id,
+        user_id: this.toUuid(d.user_id),
+        full_name: d.full_name || d.name || 'Customer',
+        phone: d.phone,
+        email: d.email || null,
+        address: d.address || null,
+        city: d.city || 'Chennai',
+        state: d.state || 'Tamil Nadu',
+        pincode: d.pincode || null,
+        latitude: d.latitude || null,
+        longitude: d.longitude || null,
+        created_at: d.created_at || new Date().toISOString(),
+        updated_at: d.updated_at || new Date().toISOString(),
+      };
+      if (d.first_name !== undefined) {
+        payload.first_name = d.first_name;
+      }
+      if (d.last_name !== undefined) {
+        payload.last_name = d.last_name;
+      }
+      return payload;
+    }
+
+    if (table === 'technician_profiles') {
+      const payload: Record<string, any> = {
+        id: d.id,
+        user_id: this.toUuid(d.user_id || d.profile_id),
+        full_name: d.full_name || d.name || 'Service Provider',
+        phone: d.phone,
+        email: d.email || null,
+        service_area: d.service_area || (d.service_areas ? d.service_areas[0] : 'Chennai Central'),
+        experience_years: d.experience_years || 0,
+        verification_status: d.verification_status || 'VERIFIED',
+        rating: d.rating || 5.0,
+        review_count: d.review_count || 0,
+        completed_jobs_count: d.completed_jobs_count || 0,
+        subscription_plan: d.subscription_plan || 'FREE',
+        online_status: d.online_status || d.availability_status || 'OFFLINE',
+        latitude: d.latitude !== undefined ? d.latitude : null,
+        longitude: d.longitude !== undefined ? d.longitude : null,
+        location_updated_at: d.location_updated_at || null,
+        is_location_shared: Boolean(d.is_location_shared),
+        last_seen_at: d.last_seen_at || new Date().toISOString(),
+        created_at: d.created_at || new Date().toISOString(),
+        updated_at: d.updated_at || new Date().toISOString(),
+      };
+      if (d.first_name !== undefined) {
+        payload.first_name = d.first_name;
+      }
+      if (d.last_name !== undefined) {
+        payload.last_name = d.last_name;
+      }
+      return payload;
+    }
+
+    if (table === 'service_requests') {
+      return {
+        id: this.toUuid(d.id),
+        customer_id: this.toUuid(d.customer_id),
+        service_category: d.service_category || 'General Service',
+        service_code: d.service_code || 'GENERAL',
+        service_description: d.service_description || d.raw_transcript || d.specific_issue || null,
+        service_mode: d.service_mode === 'SERVICE' ? 'SERVICE' : 'DIAGNOSIS',
+        requested_date: d.requested_date || null,
+        requested_time: d.requested_time || d.preferred_time || 'Within 45 mins',
+        address: d.address || d.location || 'Chennai, Tamil Nadu',
+        latitude: d.latitude || null,
+        longitude: d.longitude || null,
+        status: d.status || 'OPEN',
+        created_at: d.created_at || new Date().toISOString(),
+        updated_at: d.updated_at || new Date().toISOString(),
+      };
+    }
+
+    if (table === 'technician_skills') {
+      return {
+        id: this.toUuid(d.id),
+        technician_id: this.toUuid(d.technician_id),
+        skill_code: d.skill_code || d.code,
+        skill_name: d.skill_name || d.name,
+        category: d.category || null,
+        experience_level: d.experience_level || 'INTERMEDIATE',
+        is_certified: Boolean(d.is_certified),
+        active: d.active !== undefined ? Boolean(d.active) : true,
+        created_at: d.created_at || new Date().toISOString(),
+      };
+    }
+
+    if (table === 'bookings') {
+      let pgStatus = d.status || 'REQUESTED';
+      if (pgStatus === 'WORK_IN_PROGRESS' || pgStatus === 'DIAGNOSING') pgStatus = 'IN_PROGRESS';
+      if (pgStatus === 'MATCHING' || pgStatus === 'TECHNICIAN_SELECTED' || pgStatus === 'PENDING_CONFIRMATION') pgStatus = 'REQUESTED';
+      if (pgStatus === 'ESTIMATE_PENDING' || pgStatus === 'APPROVED') pgStatus = 'ACCEPTED';
+      if (pgStatus === 'PAYMENT_PENDING' || pgStatus === 'PAYMENT_RECEIVED' || pgStatus === 'OTP_PENDING') pgStatus = 'IN_PROGRESS';
+
+      let pgConfStatus = d.confirmation_status || 'PENDING';
+      if (pgConfStatus !== 'PENDING' && pgConfStatus !== 'CONFIRMED' && pgConfStatus !== 'REJECTED') {
+        pgConfStatus = 'PENDING';
+      }
+
+      return {
+        id: d.id,
+        reference_code: d.reference_code || `REF-${Date.now()}`,
+        customer_id: this.toUuid(d.customer_id),
+        technician_id: this.toUuid(d.technician_id),
+        service_request_id: d.service_request_id ? this.toUuid(d.service_request_id) : null,
+        service_mode: d.service_mode || 'DIAGNOSIS',
+        service_title: d.service_title || d.serviceTitle || 'Home Service',
+        appointment_date: d.appointment_date || d.appointmentDate || 'Today',
+        appointment_time: d.appointment_time || d.appointmentTime || '10:00 AM',
+        address: d.address || 'Chennai',
+        latitude: d.latitude !== undefined ? d.latitude : null,
+        longitude: d.longitude !== undefined ? d.longitude : null,
+        diagnosis_fee: d.diagnosis_fee !== undefined ? d.diagnosis_fee : 149,
+        service_amount: d.service_amount || 0,
+        total_amount: d.total_amount || 149,
+        status: pgStatus,
+        confirmation_status: pgConfStatus,
+        notes: d.notes || null,
+        idempotency_key: d.idempotency_key || null,
+        created_at: d.created_at || new Date().toISOString(),
+        updated_at: d.updated_at || new Date().toISOString(),
+      };
+    }
+
+    if (table === 'technician_locations') {
+      return {
+        id: this.toUuid(d.id),
+        technician_id: this.toUuid(d.technician_id),
+        latitude: d.latitude,
+        longitude: d.longitude,
+        accuracy_meters: d.accuracy_meters !== undefined ? d.accuracy_meters : null,
+        speed_mps: d.speed_mps !== undefined ? d.speed_mps : null,
+        heading_degrees: d.heading_degrees !== undefined ? d.heading_degrees : null,
+        recorded_at: d.recorded_at || new Date().toISOString(),
+      };
+    }
+
+    if (table === 'booking_status_history') {
+      let newStat = d.new_status;
+      if (newStat === 'WORK_IN_PROGRESS' || newStat === 'DIAGNOSING') newStat = 'IN_PROGRESS';
+      if (newStat === 'PAYMENT_PENDING' || newStat === 'PAYMENT_RECEIVED' || newStat === 'OTP_PENDING') newStat = 'IN_PROGRESS';
+
+      // Ensure changed_by references a valid public.users(id)
+      let changedByRaw = d.changed_by || d.actor_id;
+      let tech = this.technicianProfiles.get(changedByRaw) || this.technicianProfiles.get(this.toUuid(changedByRaw));
+      if (!tech) {
+        const targetUuid = this.toUuid(changedByRaw);
+        tech = Array.from(this.technicianProfiles.values()).find(
+          (t) => t.id === changedByRaw || this.toUuid(t.id) === targetUuid
+        );
+      }
+      if (tech && tech.profile_id) {
+        changedByRaw = tech.profile_id;
+      }
+      let changedByUuid = this.toUuid(changedByRaw);
+
+      // Verify that changedByUuid or changedByRaw exists in known users; fallback to booking's customer if needed
+      const userExists = this.users.get(changedByRaw) || this.users.get(changedByUuid);
+      if (!userExists) {
+        const booking = this.bookings.get(d.booking_id) || this.bookings.get(this.toUuid(d.booking_id));
+        if (booking?.customer_id) {
+          changedByUuid = this.toUuid(booking.customer_id);
+        }
+      }
+
+      return {
+        id: d.id,
+        booking_id: this.toUuid(d.booking_id),
+        previous_status: d.previous_status || null,
+        new_status: newStat,
+        changed_by: changedByUuid,
+        reason: d.reason || null,
+        created_at: d.created_at || new Date().toISOString(),
+      };
+    }
+
+    if (table === 'payments') {
+      let pStatus = d.payment_status || 'PENDING';
+      if (pStatus !== 'PENDING' && pStatus !== 'SUCCESS' && pStatus !== 'FAILED' && pStatus !== 'REFUNDED') {
+        pStatus = 'SUCCESS';
+      }
+      return {
+        id: d.id,
+        booking_id: this.toUuid(d.booking_id),
+        customer_id: this.toUuid(d.customer_id),
+        amount: d.amount,
+        currency: d.currency || 'INR',
+        provider: d.provider || 'RAZORPAY',
+        provider_transaction_id: d.provider_transaction_id || d.transaction_reference || null,
+        payment_status: pStatus,
+        payment_method_type: d.payment_method_type || d.payment_method || 'UPI',
+        idempotency_key: d.idempotency_key || null,
+        created_at: d.created_at || new Date().toISOString(),
+        updated_at: d.updated_at || new Date().toISOString(),
+      };
+    }
+
+    if (table === 'subscriptions') {
+      return {
+        id: d.id,
+        technician_id: this.toUuid(d.technician_id),
+        plan_tier: d.plan_tier || d.plan_type || 'WEEKLY',
+        amount: d.amount || d.price || 599,
+        status: d.is_active ? 'ACTIVE' : (d.status || 'ACTIVE'),
+        start_date: d.activated_at || d.start_date || new Date().toISOString(),
+        end_date: d.expires_at || d.end_date || new Date(Date.now() + 7 * 86400000).toISOString(),
+        provider_transaction_id: d.payment_reference || d.provider_transaction_id || null,
+        created_at: d.created_at || new Date().toISOString(),
+        updated_at: d.updated_at || new Date().toISOString(),
+      };
+    }
+
+    if (table === 'technician_earnings') {
+      const gross = Number(d.gross_amount ?? d.amount ?? 149);
+      const fee = Number(d.platform_fee ?? 0);
+      const net = Number(d.net_amount ?? (gross - fee));
+      return {
+        id: d.id,
+        technician_id: this.toUuid(d.technician_id),
+        booking_id: this.toUuid(d.booking_id),
+        gross_amount: gross,
+        platform_fee: fee,
+        net_amount: net,
+        payment_status: d.payment_status || 'PAID',
+        payout_status: d.payout_status || 'PROCESSED',
+        created_at: d.created_at || new Date().toISOString(),
+      };
+    }
+
+    if (table === 'notifications') {
+      return {
+        id: d.id,
+        user_id: this.toUuid(d.user_id),
+        type: d.type || 'SYSTEM',
+        title: d.title || 'Notification',
+        message: d.message || '',
+        read_status: Boolean(d.read_status || d.is_read),
+        metadata: d.metadata || null,
+        created_at: d.created_at || new Date().toISOString(),
+      };
+    }
+
+    if (table === 'audit_logs') {
+      return {
+        id: d.id,
+        user_id: d.user_id ? this.toUuid(d.user_id) : null,
+        action: d.action,
+        ip_address: d.ip_address || null,
+        user_agent: d.user_agent || null,
+        status: d.status || 'INFO',
+        metadata: d.metadata || null,
+        created_at: d.created_at || new Date().toISOString(),
+      };
+    }
+
+    return d;
+  }
+
+  /**
+   * Persists record to live Supabase PostgreSQL table when configured
+   */
+  public async syncToRemote(table: string, data: Record<string, any>): Promise<any> {
+    const isNode = typeof window === 'undefined' && typeof process !== 'undefined' && Boolean((process as any).versions?.node);
+    if (isSupabaseConfigured && isNode) {
       const client = getSupabaseClient();
       if (client) {
-        Promise.resolve((client.from(table as any) as any).upsert([data])).catch((err: any) => {
-          console.warn(`[NEXDO Supabase Sync] Failed to upsert to ${table}:`, err?.message || err);
-        });
+        const payload = this.formatForSupabase(table, data);
+        try {
+          const syncPayload = { ...payload };
+          let res = await (client.from(table as any) as any).upsert([syncPayload]);
+
+          // Iteratively strip columns not present in remote schema cache
+          let retries = 0;
+          while (
+            res?.error &&
+            retries < 5 &&
+            /Could not find the '([^']+)' column/i.test(res.error.message || '')
+          ) {
+            const match = res.error.message.match(/Could not find the '([^']+)' column/i);
+            if (match && match[1] && syncPayload[match[1]] !== undefined) {
+              delete syncPayload[match[1]];
+              retries++;
+              res = await (client.from(table as any) as any).upsert([syncPayload]);
+            } else {
+              break;
+            }
+          }
+
+          if (
+            res?.error &&
+            /(?:username|first_name|last_name)/i.test(res.error.message || '')
+          ) {
+            delete syncPayload.username;
+            delete syncPayload.first_name;
+            delete syncPayload.last_name;
+            res = await (client.from(table as any) as any).upsert([syncPayload]);
+          }
+          if (res?.error) {
+            console.warn(`[NEXDO Supabase Sync] Failed to upsert to ${table}:`, res.error.message);
+          }
+          return res;
+        } catch (err: any) {
+          console.warn(`[NEXDO Supabase Sync] Exception on upsert to ${table}:`, err?.message || err);
+        }
       }
     }
+    return Promise.resolve();
+  }
+
+  /**
+   * Deletes a record from live Supabase PostgreSQL table when configured
+   */
+  public async deleteFromRemote(table: string, id: string): Promise<any> {
+    const isNode = typeof window === 'undefined' && typeof process !== 'undefined' && Boolean((process as any).versions?.node);
+    if (isSupabaseConfigured && isNode) {
+      const client = getSupabaseClient();
+      if (client) {
+        const uuid = this.toUuid(id);
+        try {
+          const res = await (client.from(table as any) as any).delete().eq('id', uuid);
+          if (res?.error) {
+            console.warn(`[NEXDO Supabase Delete] Failed to delete from ${table}:`, res.error.message);
+          }
+          return res;
+        } catch (err: any) {
+          console.warn(`[NEXDO Supabase Delete] Exception deleting from ${table}:`, err?.message || err);
+        }
+      }
+    }
+    return Promise.resolve();
+  }
+
+  /**
+   * Directly queries a user by phone from remote Supabase
+   */
+  public async fetchUserByPhoneFromRemote(phone: string): Promise<UserRecord | null> {
+    if (!isSupabaseConfigured) return null;
+    const client = getSupabaseClient();
+    if (!client) return null;
+
+    const cleanPhone = phone.replace(/\D/g, '').slice(-10);
+    if (!cleanPhone || cleanPhone.length !== 10) return null;
+
+    try {
+      const { data, error } = await client
+        .from('users')
+        .select('*')
+        .or(`phone.eq.${cleanPhone},phone.eq.+91${cleanPhone},phone.eq.+91 ${cleanPhone}`)
+        .limit(1);
+
+      if (error || !data || data.length === 0) return null;
+      const remoteUser = data[0] as UserRecord;
+      this.users.set(remoteUser.id, remoteUser);
+
+      // Proactively fetch associated profile
+      if (remoteUser.role === 'CUSTOMER') {
+        await this.fetchCustomerProfileFromRemote(remoteUser.id);
+      } else if (remoteUser.role === 'TECHNICIAN') {
+        await this.fetchTechnicianProfileFromRemote(remoteUser.id);
+      }
+
+      return remoteUser;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Directly queries a user by email from remote Supabase
+   */
+  public async fetchUserByEmailFromRemote(email: string): Promise<UserRecord | null> {
+    if (!isSupabaseConfigured) return null;
+    const client = getSupabaseClient();
+    if (!client) return null;
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) return null;
+
+    try {
+      const { data, error } = await client
+        .from('users')
+        .select('*')
+        .ilike('email', cleanEmail)
+        .limit(1);
+
+      if (error || !data || data.length === 0) return null;
+      const remoteUser = data[0] as UserRecord;
+      this.users.set(remoteUser.id, remoteUser);
+
+      // Proactively fetch associated profile
+      if (remoteUser.role === 'CUSTOMER') {
+        await this.fetchCustomerProfileFromRemote(remoteUser.id);
+      } else if (remoteUser.role === 'TECHNICIAN') {
+        await this.fetchTechnicianProfileFromRemote(remoteUser.id);
+      }
+
+      return remoteUser;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Directly queries a user by username from remote Supabase
+   */
+  public async fetchUserByUsernameFromRemote(username: string): Promise<UserRecord | null> {
+    if (!isSupabaseConfigured) return null;
+    const client = getSupabaseClient();
+    if (!client) return null;
+
+    const cleanUsername = username.trim().toLowerCase();
+    if (!cleanUsername) return null;
+
+    // Check in-memory first
+    const local = this.getUserByUsername(cleanUsername);
+    if (local) return local;
+
+    try {
+      const { data, error } = await client
+        .from('users')
+        .select('*')
+        .ilike('username', cleanUsername)
+        .limit(1);
+
+      if (!error && data && data.length > 0) {
+        const remoteUser = data[0] as UserRecord;
+        this.users.set(remoteUser.id, remoteUser);
+
+        if (remoteUser.role === 'CUSTOMER') {
+          await this.fetchCustomerProfileFromRemote(remoteUser.id);
+        } else if (remoteUser.role === 'TECHNICIAN') {
+          await this.fetchTechnicianProfileFromRemote(remoteUser.id);
+        }
+        return remoteUser;
+      }
+    } catch {
+      // Column 'username' might not exist in remote table schema
+    }
+
+    // Fallback 1: Lookup by email prefix (e.g. 'nivasan24' matches 'nivasan24@gmail.com')
+    try {
+      const { data: emailData, error: emailError } = await client
+        .from('users')
+        .select('*')
+        .ilike('email', `${cleanUsername}@%`)
+        .limit(1);
+
+      if (!emailError && emailData && emailData.length > 0) {
+        const remoteUser = emailData[0] as UserRecord;
+        this.users.set(remoteUser.id, remoteUser);
+        if (remoteUser.role === 'CUSTOMER') {
+          await this.fetchCustomerProfileFromRemote(remoteUser.id);
+        } else if (remoteUser.role === 'TECHNICIAN') {
+          await this.fetchTechnicianProfileFromRemote(remoteUser.id);
+        }
+        return remoteUser;
+      }
+    } catch {
+      // Fallback 1 query optional
+    }
+
+    // Fallback 2: Lookup by profile full_name in customer_profiles or technician_profiles
+    const searchName = cleanUsername.replace(/[._-]/g, ' ').trim();
+    if (searchName) {
+      try {
+        const { data: custData } = await client
+          .from('customer_profiles')
+          .select('user_id')
+          .ilike('full_name', searchName)
+          .limit(1);
+
+        if (custData && custData.length > 0 && custData[0].user_id) {
+          return await this.fetchUserByIdFromRemote(custData[0].user_id);
+        }
+
+        const { data: techData } = await client
+          .from('technician_profiles')
+          .select('user_id')
+          .ilike('full_name', searchName)
+          .limit(1);
+
+        if (techData && techData.length > 0 && techData[0].user_id) {
+          return await this.fetchUserByIdFromRemote(techData[0].user_id);
+        }
+      } catch {
+        // Fallback 2 query optional
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Directly queries a user by ID from remote Supabase
+   */
+  public async fetchUserByIdFromRemote(userId: string): Promise<UserRecord | null> {
+    if (!isSupabaseConfigured) return null;
+    const client = getSupabaseClient();
+    if (!client) return null;
+
+    const uuid = this.toUuid(userId);
+    const { data, error } = await client
+      .from('users')
+      .select('*')
+      .eq('id', uuid)
+      .limit(1);
+
+    if (error || !data || data.length === 0) return null;
+    const remoteUser = data[0] as UserRecord;
+    this.users.set(remoteUser.id, remoteUser);
+    return remoteUser;
+  }
+
+  /**
+   * Directly queries a session by token hash from remote Supabase
+   */
+  public async fetchSessionByTokenHashFromRemote(tokenHash: string): Promise<SessionRecord | null> {
+    if (this.revokedTokenHashes.has(tokenHash)) return null;
+    if (!isSupabaseConfigured) return null;
+    const client = getSupabaseClient();
+    if (!client) return null;
+
+    const { data, error } = await client
+      .from('sessions')
+      .select('*')
+      .eq('session_token_hash', tokenHash)
+      .limit(1);
+
+    if (error || !data || data.length === 0) return null;
+    const remoteSession = data[0] as SessionRecord;
+    this.sessions.set(remoteSession.id, remoteSession);
+    return remoteSession;
+  }
+
+  /**
+   * Directly deletes a session by token hash from remote Supabase
+   */
+  public async deleteSessionByTokenHashFromRemote(tokenHash: string): Promise<void> {
+    if (!isSupabaseConfigured) return;
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    try {
+      await (client.from('sessions') as any).delete().eq('session_token_hash', tokenHash);
+    } catch (err: any) {
+      console.warn('[NEXDO Supabase Delete] Exception deleting session by token hash:', err?.message || err);
+    }
+  }
+
+  /**
+   * Directly queries customer profile by user ID from remote Supabase
+   */
+  public async fetchCustomerProfileFromRemote(userId: string): Promise<CustomerProfileRecord | null> {
+    if (!isSupabaseConfigured) return null;
+    const client = getSupabaseClient();
+    if (!client) return null;
+
+    const uuid = this.toUuid(userId);
+    const { data, error } = await client
+      .from('customer_profiles')
+      .select('*')
+      .eq('user_id', uuid)
+      .limit(1);
+
+    if (error || !data || data.length === 0) return null;
+    const remoteProfile = data[0] as CustomerProfileRecord;
+    this.customerProfiles.set(remoteProfile.id, remoteProfile);
+    return remoteProfile;
+  }
+
+  /**
+   * Directly queries technician profile by user ID from remote Supabase
+   */
+  public async fetchTechnicianProfileFromRemote(userId: string): Promise<TechnicianProfileRecord | null> {
+    if (!isSupabaseConfigured) return null;
+    const client = getSupabaseClient();
+    if (!client) return null;
+
+    const uuid = this.toUuid(userId);
+    const { data, error } = await client
+      .from('technician_profiles')
+      .select('*')
+      .eq('user_id', uuid)
+      .limit(1);
+
+    if (error || !data || data.length === 0) return null;
+    const p = data[0] as any;
+    const mapped: TechnicianProfileRecord = {
+      id: p.id,
+      profile_id: p.user_id,
+      first_name: p.first_name || undefined,
+      last_name: p.last_name || undefined,
+      name:
+        p.first_name && p.last_name
+          ? `${p.first_name} ${p.last_name}`.trim()
+          : p.full_name || p.first_name || 'Service Provider',
+      phone: p.phone,
+      email: p.email || undefined,
+      city: 'Chennai',
+      district: 'Chennai District, Tamil Nadu',
+      pincode: '600020',
+      radius_km: 8,
+      experience_years: p.experience_years || 1,
+      rating: p.rating || 5.0,
+      review_count: p.review_count || 0,
+      completed_jobs_count: p.completed_jobs_count || 0,
+      verification_status: p.verification_status || 'VERIFIED',
+      availability_status: p.online_status || 'ONLINE',
+      service_areas: [p.service_area || 'Chennai Central'],
+      languages_spoken: ['Tamil', 'English'],
+      badges: ['Verified Pro'],
+      subscription_plan: p.subscription_plan || 'WEEKLY',
+      latitude: p.latitude !== undefined && p.latitude !== null ? Number(p.latitude) : null,
+      longitude: p.longitude !== undefined && p.longitude !== null ? Number(p.longitude) : null,
+      location_updated_at: p.location_updated_at || null,
+      is_location_shared: Boolean(p.is_location_shared),
+      last_seen_at: p.last_seen_at,
+      created_at: p.created_at,
+      updated_at: p.updated_at,
+    };
+    this.technicianProfiles.set(mapped.id, mapped);
+
+    try {
+      const { data: skillsData } = await client
+        .from('technician_skills')
+        .select('*')
+        .eq('technician_id', p.id);
+
+      if (skillsData && Array.isArray(skillsData)) {
+        for (const s of skillsData) {
+          const mappedSkill: TechnicianSkillRecord = {
+            id: s.id,
+            technician_id: s.technician_id,
+            skill_code: s.skill_code,
+            skill_name: s.skill_name,
+            category: s.category || 'General',
+            experience_level: s.experience_level || 'INTERMEDIATE',
+            is_certified: Boolean(s.is_certified),
+            active: s.active !== undefined ? Boolean(s.active) : true,
+            created_at: s.created_at || new Date().toISOString(),
+          };
+          this.technicianSkills.set(mappedSkill.id, mappedSkill);
+        }
+      }
+    } catch {
+      // Skills query optional
+    }
+
+    return mapped;
+  }
+
+  /**
+   * Fetches all real registered technician profiles and their registered skills from remote Supabase
+   */
+  public async fetchAllTechniciansFromRemote(): Promise<TechnicianProfileRecord[]> {
+    if (!isSupabaseConfigured) {
+      return Array.from(this.technicianProfiles.values());
+    }
+    const client = getSupabaseClient();
+    if (!client) {
+      return Array.from(this.technicianProfiles.values());
+    }
+
+    try {
+      const { data: techData, error: techError } = await client
+        .from('technician_profiles')
+        .select('*');
+
+      if (techError || !techData) {
+        return Array.from(this.technicianProfiles.values());
+      }
+
+      const { data: skillsData } = await client
+        .from('technician_skills')
+        .select('*');
+
+      if (skillsData && Array.isArray(skillsData)) {
+        for (const s of skillsData) {
+          const mappedSkill: TechnicianSkillRecord = {
+            id: s.id,
+            technician_id: s.technician_id,
+            skill_code: s.skill_code,
+            skill_name: s.skill_name,
+            category: s.category || 'General',
+            experience_level: s.experience_level || 'INTERMEDIATE',
+            is_certified: Boolean(s.is_certified),
+            active: s.active !== undefined ? Boolean(s.active) : true,
+            created_at: s.created_at || new Date().toISOString(),
+          };
+          this.technicianSkills.set(mappedSkill.id, mappedSkill);
+        }
+      }
+
+      for (const p of techData) {
+        const mapped: TechnicianProfileRecord = {
+          id: p.id,
+          profile_id: p.user_id,
+          first_name: p.first_name || undefined,
+          last_name: p.last_name || undefined,
+          name:
+            p.first_name && p.last_name
+              ? `${p.first_name} ${p.last_name}`.trim()
+              : p.full_name || p.first_name || 'Service Provider',
+          phone: p.phone,
+          email: p.email || undefined,
+          city: 'Chennai',
+          district: 'Chennai District, Tamil Nadu',
+          pincode: '600020',
+          radius_km: p.radius_km || 8,
+          experience_years: p.experience_years || 1,
+          rating: p.rating || 5.0,
+          review_count: p.review_count || 0,
+          completed_jobs_count: p.completed_jobs_count || 0,
+          verification_status: p.verification_status || 'VERIFIED',
+          availability_status: p.online_status || 'ONLINE',
+          service_areas: [p.service_area || 'Chennai Central'],
+          languages_spoken: ['Tamil', 'English'],
+          badges: ['Verified Pro'],
+          subscription_plan: p.subscription_plan || 'WEEKLY',
+          latitude: p.latitude !== undefined && p.latitude !== null ? Number(p.latitude) : null,
+          longitude: p.longitude !== undefined && p.longitude !== null ? Number(p.longitude) : null,
+          location_updated_at: p.location_updated_at || null,
+          is_location_shared: Boolean(p.is_location_shared),
+          last_seen_at: p.last_seen_at,
+          created_at: p.created_at,
+          updated_at: p.updated_at,
+        };
+        this.technicianProfiles.set(mapped.id, mapped);
+      }
+
+      return Array.from(this.technicianProfiles.values());
+    } catch (err) {
+      console.warn('[NEXDO Backend] Exception fetching all technicians from remote:', err);
+      return Array.from(this.technicianProfiles.values());
+    }
+  }
+
+  /**
+   * Directly queries a service request by ID from remote Supabase
+   */
+  public async fetchServiceRequestFromRemote(requestId: string): Promise<ServiceRequestRecord | null> {
+    if (!isSupabaseConfigured) return null;
+    const client = getSupabaseClient();
+    if (!client) return null;
+
+    const uuid = this.toUuid(requestId);
+    const { data, error } = await client
+      .from('service_requests')
+      .select('*')
+      .eq('id', uuid)
+      .limit(1);
+
+    if (error || !data || data.length === 0) return null;
+    const remoteReq = data[0] as ServiceRequestRecord;
+    this.serviceRequests.set(remoteReq.id, remoteReq);
+    return remoteReq;
+  }
+
+  /**
+   * Directly queries a booking by ID from remote Supabase
+   */
+  public async fetchBookingFromRemote(bookingId: string): Promise<BookingRecord | null> {
+    if (!isSupabaseConfigured) return null;
+    const client = getSupabaseClient();
+    if (!client) return null;
+
+    const uuid = this.toUuid(bookingId);
+    const { data, error } = await client
+      .from('bookings')
+      .select('*')
+      .eq('id', uuid)
+      .limit(1);
+
+    if (error || !data || data.length === 0) return null;
+    const raw = data[0] as any;
+    const remoteBooking: BookingRecord = {
+      ...raw,
+      latitude: raw.latitude !== undefined && raw.latitude !== null ? Number(raw.latitude) : undefined,
+      longitude: raw.longitude !== undefined && raw.longitude !== null ? Number(raw.longitude) : undefined,
+      estimated_price: Number(raw.total_amount ?? raw.diagnosis_fee ?? raw.service_amount ?? 149),
+      diagnosis_fee: Number(raw.diagnosis_fee ?? 0),
+      service_amount: Number(raw.service_amount ?? 0),
+      total_amount: Number(raw.total_amount ?? 149),
+    };
+    this.bookings.set(bookingId, remoteBooking);
+    this.bookings.set(remoteBooking.id, remoteBooking);
+    return remoteBooking;
+  }
+
+  /**
+   * Updates a technician's GPS coordinates and records telemetry
+   */
+  public async updateTechnicianLocationAsync(
+    technicianId: string,
+    coords: {
+      latitude: number;
+      longitude: number;
+      accuracy_meters?: number | null;
+      speed_mps?: number | null;
+      heading_degrees?: number | null;
+    }
+  ): Promise<TechnicianProfileRecord | null> {
+    let tech = this.technicianProfiles.get(technicianId) || this.technicianProfiles.get(this.toUuid(technicianId));
+    if (!tech) {
+      const targetUuid = this.toUuid(technicianId);
+      tech = Array.from(this.technicianProfiles.values()).find(
+        (t) => t.id === technicianId || this.toUuid(t.id) === targetUuid || t.profile_id === technicianId
+      );
+    }
+    if (!tech) return null;
+
+    const now = new Date().toISOString();
+    tech.latitude = coords.latitude;
+    tech.longitude = coords.longitude;
+    tech.location_updated_at = now;
+    tech.is_location_shared = true;
+    tech.updated_at = now;
+
+    // Record in technicianLocations
+    const locRecord: any = {
+      id: `loc_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      technician_id: tech.id,
+      latitude: coords.latitude,
+      longitude: coords.longitude,
+      accuracy_meters: coords.accuracy_meters || null,
+      speed_mps: coords.speed_mps || null,
+      heading_degrees: coords.heading_degrees || null,
+      recorded_at: now,
+    };
+    this.technicianLocations.set(locRecord.id, locRecord);
+
+    await this.syncToRemote('technician_profiles', tech);
+    await this.syncToRemote('technician_locations', locRecord);
+
+    return tech;
+  }
+
+  /**
+   * Stops live location sharing for a technician
+   */
+  public async stopTechnicianLocationSharingAsync(technicianId: string): Promise<boolean> {
+    let tech = this.technicianProfiles.get(technicianId) || this.technicianProfiles.get(this.toUuid(technicianId));
+    if (!tech) {
+      const targetUuid = this.toUuid(technicianId);
+      tech = Array.from(this.technicianProfiles.values()).find(
+        (t) => t.id === technicianId || this.toUuid(t.id) === targetUuid || t.profile_id === technicianId
+      );
+    }
+    if (!tech) return false;
+
+    tech.is_location_shared = false;
+    tech.updated_at = new Date().toISOString();
+    await this.syncToRemote('technician_profiles', tech);
+    return true;
   }
 
   // --------------------------------------------------------------------------
@@ -435,6 +1374,7 @@ export class NexdoDatabaseStore {
     const custUserId = 'u0000001-0000-0000-0000-000000000001';
     const custUser: UserRecord = {
       id: custUserId,
+      username: 'hariharasudhan',
       email: 'customer@nexdo.in',
       phone: '9876543210',
       password_hash: defaultPasswordHash,
@@ -497,6 +1437,7 @@ export class NexdoDatabaseStore {
     const techUser1Id = 'u0000001-0000-0000-0000-000000000002';
     const techUser1: UserRecord = {
       id: techUser1Id,
+      username: 'ravi_kumar',
       email: 'ravi.kumar@nexdo.in',
       phone: '9840122334',
       password_hash: defaultPasswordHash,
@@ -541,6 +1482,7 @@ export class NexdoDatabaseStore {
     const techUser2Id = 'u0000001-0000-0000-0000-000000000003';
     const techUser2: UserRecord = {
       id: techUser2Id,
+      username: 'senthil_murugan',
       email: 'senthil.murugan@nexdo.in',
       phone: '9840233445',
       password_hash: defaultPasswordHash,
@@ -585,6 +1527,7 @@ export class NexdoDatabaseStore {
     const techUser3Id = 'u0000001-0000-0000-0000-000000000004';
     const techUser3: UserRecord = {
       id: techUser3Id,
+      username: 'kumaravel',
       email: 'kumaravel@nexdo.in',
       phone: '9840155667',
       password_hash: defaultPasswordHash,
@@ -628,6 +1571,7 @@ export class NexdoDatabaseStore {
     const techUser4Id = 'u0000001-0000-0000-0000-000000000005';
     const techUser4: UserRecord = {
       id: techUser4Id,
+      username: 'murugan_plumbing',
       email: 'murugan.plumbing@nexdo.in',
       phone: '9840311223',
       password_hash: defaultPasswordHash,
@@ -784,6 +1728,40 @@ export class NexdoDatabaseStore {
   }
 
   /**
+   * Syncs core seed entities (technicians, skills, users, profiles) to live Supabase database
+   */
+  public async syncSeedDataToRemote(): Promise<void> {
+    if (!isSupabaseConfigured) return;
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    try {
+      // 1. Sync seed users
+      for (const u of this.users.values()) {
+        await this.syncToRemote('users', u);
+      }
+      // 2. Sync seed customer profiles
+      for (const cp of this.customerProfiles.values()) {
+        await this.syncToRemote('customer_profiles', cp);
+      }
+      // 3. Sync seed technician profiles
+      for (const tp of this.technicianProfiles.values()) {
+        await this.syncToRemote('technician_profiles', tp);
+      }
+      // 4. Sync seed technician skills
+      for (const ts of this.technicianSkills.values()) {
+        await this.syncToRemote('technician_skills', ts);
+      }
+      // 5. Sync seed subscriptions
+      for (const sub of this.subscriptions.values()) {
+        await this.syncToRemote('subscriptions', sub);
+      }
+    } catch (err: any) {
+      console.warn('[NEXDO] Seed sync warning:', err?.message || err);
+    }
+  }
+
+  /**
    * Resets entire store to initial pristine seed state (for test isolation)
    */
   public resetToSeed(): void {
@@ -814,6 +1792,7 @@ export class NexdoDatabaseStore {
     this.conversationMessages.clear();
     this.voiceIntents.clear();
     this.notifications.clear();
+    this.revokedTokenHashes.clear();
     this.inTransaction = false;
     this.transactionSnapshot = null;
     this.seedInitialData();

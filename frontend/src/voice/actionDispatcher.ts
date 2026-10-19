@@ -411,6 +411,12 @@ export function dispatchCanonicalAction(
       if (deps.onSystemCancel) deps.onSystemCancel();
       break;
 
+    case 'CLEAR_PROBLEM_DESCRIPTION':
+    case 'REMOVE_LAST_SENTENCE':
+    case 'APPEND_PROBLEM_DESCRIPTION':
+    case 'SET_PROBLEM_DESCRIPTION':
+      break;
+
     default:
       console.warn('[ActionDispatcher] Unhandled action:', action.type);
       break;

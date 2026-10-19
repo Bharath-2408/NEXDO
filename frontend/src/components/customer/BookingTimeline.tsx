@@ -26,20 +26,20 @@ export const BookingTimeline: React.FC<BookingTimelineProps> = ({
   }[] = [
     {
       statusKey: 'ACCEPTED',
-      title: 'Technician Assigned',
+      title: 'Service Provider Assigned',
       description: 'Verified professional accepted your service request',
       icon: ShieldCheck,
     },
     {
       statusKey: 'TECHNICIAN_ON_THE_WAY',
-      title: 'Technician En Route',
+      title: 'Service Provider En Route',
       description: 'Navigating to your doorstep with live GPS coordinate feed',
       icon: Clock,
     },
     {
       statusKey: 'ARRIVED',
       title: 'Arrived at Doorstep',
-      description: 'Technician is at your location',
+      description: 'Service provider is at your location',
       icon: CheckCircle2,
     },
     {
@@ -59,7 +59,7 @@ export const BookingTimeline: React.FC<BookingTimelineProps> = ({
     {
       statusKey: 'WORK_IN_PROGRESS',
       title: 'Execution & Repair',
-      description: 'Active technician repair adhering to safety protocol',
+      description: 'Active service provider repair adhering to safety protocol',
       icon: Wrench,
     },
     {
@@ -72,7 +72,7 @@ export const BookingTimeline: React.FC<BookingTimelineProps> = ({
     {
       statusKey: 'COMPLETED',
       title: 'Job Completed',
-      description: 'Final completion OTP verified and technician credited',
+      description: 'Final completion OTP verified and service provider credited',
       icon: KeyRound,
       meta: finalOtp ? `Final OTP: ${finalOtp}` : undefined,
     },

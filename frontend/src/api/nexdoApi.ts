@@ -5,34 +5,17 @@
 
 import { handleNexdoApiRequest } from '../backend/router';
 import { Booking, MatchedProvider } from '../types/customer';
-import { JobOpportunity } from '../types/technician';
+import { JobOpportunity, TechnicianEarnings } from '../types/technician';
 import { ServiceCategoryRecord, SubscriptionPlanRecord } from '../backend/database/types';
 
 let inMemorySessionToken: string | null = null;
 
 export function setClientSessionToken(token: string | null) {
   inMemorySessionToken = token;
-  if (typeof window !== 'undefined') {
-    if (token) {
-      try {
-        sessionStorage.setItem('nexdo_auth_token', token);
-      } catch {}
-    } else {
-      try {
-        sessionStorage.removeItem('nexdo_auth_token');
-      } catch {}
-    }
-  }
 }
 
 export function getClientSessionToken(): string | null {
-  if (inMemorySessionToken) return inMemorySessionToken;
-  if (typeof window !== 'undefined') {
-    try {
-      return sessionStorage.getItem('nexdo_auth_token');
-    } catch {}
-  }
-  return null;
+  return inMemorySessionToken;
 }
 
 async function callApi<T>(method: string, endpoint: string, body?: any, customHeaders?: Record<string, string>): Promise<T> {
@@ -43,24 +26,34 @@ async function callApi<T>(method: string, endpoint: string, body?: any, customHe
     ...(customHeaders || {}),
   };
 
-  // 1. In browser with network available, make real HTTP fetch
+  // 1. In browser with network available, make real HTTP fetch with cookie credentials
   if (typeof window !== 'undefined' && typeof fetch !== 'undefined') {
+    let res: Response;
     try {
-      const res = await fetch(endpoint, {
+      res = await fetch(endpoint, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
         credentials: 'include',
       });
-      if (res.ok) {
-        return (await res.json()) as T;
+    } catch (networkErr: any) {
+      if (endpoint.startsWith('/api/auth/')) {
+        throw new Error('Authentication server or database is unavailable. Please check your connection.');
       }
-    } catch {
-      // Fallback to internal router for offline/sandbox/direct invocation
+      throw new Error(networkErr?.message || 'Network request failed');
     }
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err: any = new Error(data?.error || `API error ${res.status}`);
+      err.status = res.status;
+      err.retryAfterSeconds = data?.retryAfterSeconds;
+      throw err;
+    }
+    return data as T;
   }
 
-  // 2. Direct Backend Router Execution (Node test runners, offline mode, fallback)
+  // 2. Direct Backend Router Execution (Node test runners, direct invocation)
   const response = await handleNexdoApiRequest({
     method,
     url: endpoint,
@@ -69,7 +62,10 @@ async function callApi<T>(method: string, endpoint: string, body?: any, customHe
   });
 
   if (response.status >= 400) {
-    throw new Error(response.body?.error || `API error ${response.status}`);
+    const err: any = new Error(response.body?.error || `API error ${response.status}`);
+    err.status = response.status;
+    err.retryAfterSeconds = response.body?.retryAfterSeconds;
+    throw err;
   }
 
   return response.body as T;
@@ -79,11 +75,16 @@ export const nexdoApi = {
   auth: {
     register: async (data: {
       phone: string;
+      username?: string;
       password: string;
-      name: string;
+      confirmPassword?: string;
+      firstName?: string;
+      lastName?: string;
+      name?: string;
       role?: 'CUSTOMER' | 'TECHNICIAN';
       email?: string;
       serviceArea?: string;
+      serviceDomains?: string[];
     }) => {
       const res = await callApi<{ user: any; sessionToken: string; profile: any }>(
         'POST',
@@ -96,7 +97,15 @@ export const nexdoApi = {
       return res;
     },
 
-    login: async (data: { phone: string; password: string }) => {
+    login: async (data: {
+      identifier?: string;
+      phone?: string;
+      email?: string;
+      username?: string;
+      loginMethod?: 'mobile' | 'email' | 'username' | 'auto';
+      expectedRole?: 'CUSTOMER' | 'TECHNICIAN';
+      password: string;
+    }) => {
       const res = await callApi<{ user: any; sessionToken: string; profile: any }>(
         'POST',
         '/api/auth/login',
@@ -115,22 +124,32 @@ export const nexdoApi = {
     },
 
     me: async () => {
-      return callApi<{ user: any; profile: any }>('GET', '/api/auth/me');
+      const res = await callApi<{ user: any; profile: any }>('GET', '/api/auth/me');
+      return res;
     },
 
-    forgotPassword: async (phone: string) => {
-      return callApi<{ success: boolean; message: string; resetToken?: string }>(
-        'POST',
-        '/api/auth/forgot-password',
-        { phone }
-      );
+    forgotPassword: async (input: { email?: string; phone?: string } | string) => {
+      const payload = typeof input === 'string'
+        ? input.includes('@') ? { email: input } : { phone: input }
+        : input;
+      return callApi<{
+        success: boolean;
+        message: string;
+        resetToken?: string;
+        emailDelivery?: 'SENT' | 'NOT_CONFIGURED' | 'FAILED' | 'SUPPRESSED';
+        providerError?: string;
+      }>('POST', '/api/auth/forgot-password', payload);
     },
 
-    resetPassword: async (token: string, password: string) => {
-      return callApi<{ success: boolean }>('POST', '/api/auth/reset-password', {
-        token,
-        password,
-      });
+    verifyOtp: async (data: { email?: string; phone?: string; otp: string }) => {
+      return callApi<{ success: boolean; resetToken: string }>('POST', '/api/auth/verify-otp', data);
+    },
+
+    resetPassword: async (tokenOrPayload: string | { token: string; password: string }, password?: string) => {
+      const payload = typeof tokenOrPayload === 'string'
+        ? { token: tokenOrPayload, password: password || '' }
+        : tokenOrPayload;
+      return callApi<{ success: boolean }>('POST', '/api/auth/reset-password', payload);
     },
   },
 
@@ -186,17 +205,56 @@ export const nexdoApi = {
   },
 
   technicians: {
-    search: async (params?: { serviceCode?: string; area?: string; serviceMode?: 'DIAGNOSIS' | 'SERVICE' }) => {
+    search: async (params?: { serviceCode?: string; area?: string; serviceMode?: 'DIAGNOSIS' | 'SERVICE'; latitude?: number; longitude?: number; radiusKm?: number }) => {
       const query = new URLSearchParams();
       if (params?.serviceCode) query.set('serviceCode', params.serviceCode);
       if (params?.area) query.set('area', params.area);
       if (params?.serviceMode) query.set('serviceMode', params.serviceMode);
+      if (params?.latitude !== undefined) query.set('lat', params.latitude.toString());
+      if (params?.longitude !== undefined) query.set('lng', params.longitude.toString());
+      if (params?.radiusKm !== undefined) query.set('radiusKm', params.radiusKm.toString());
 
       const res = await callApi<{ technicians: MatchedProvider[] }>(
         'GET',
         `/api/technicians/search?${query.toString()}`
       );
       return res.technicians;
+    },
+
+    searchNearby: async (params: { latitude: number; longitude: number; radiusKm?: number; serviceCode?: string }) => {
+      const query = new URLSearchParams();
+      query.set('lat', params.latitude.toString());
+      query.set('lng', params.longitude.toString());
+      if (params.radiusKm) query.set('radiusKm', params.radiusKm.toString());
+      if (params.serviceCode) query.set('serviceCode', params.serviceCode);
+
+      const res = await callApi<{ technicians: MatchedProvider[] }>(
+        'GET',
+        `/api/technicians/nearby?${query.toString()}`
+      );
+      return res.technicians;
+    },
+
+    updateLocation: async (data: {
+      latitude: number;
+      longitude: number;
+      accuracy?: number | null;
+      speed?: number | null;
+      heading?: number | null;
+    }) => {
+      return callApi<{ success: boolean; recordedAt: string; latitude: number; longitude: number }>(
+        'POST',
+        '/api/technician/location',
+        data
+      );
+    },
+
+    toggleLocationSharing: async (enabled: boolean) => {
+      return callApi<{ success: boolean; isLocationShared: boolean }>(
+        'POST',
+        '/api/technician/location/toggle',
+        { enabled }
+      );
     },
 
     getById: async (id: string) => {
@@ -240,6 +298,11 @@ export const nexdoApi = {
       return res.booking;
     },
 
+    getTracking: async (id: string) => {
+      const res = await callApi<{ tracking: any }>('GET', `/api/bookings/${id}/tracking`);
+      return res.tracking;
+    },
+
     create: async (data: {
       customerId?: string;
       technicianId: string;
@@ -248,10 +311,13 @@ export const nexdoApi = {
       appointmentDate?: string;
       appointmentTime?: string;
       address: string;
+      latitude?: number;
+      longitude?: number;
       serviceMode?: 'DIAGNOSIS' | 'SERVICE';
       notes?: string;
       estimatedPrice?: number;
       idempotencyKey?: string;
+      status?: string;
     }) => {
       const res = await callApi<{ booking: Booking }>('POST', '/api/bookings', data, {
         ...(data.idempotencyKey ? { 'X-Idempotency-Key': data.idempotencyKey } : {}),
@@ -312,6 +378,23 @@ export const nexdoApi = {
         `/api/technician/jobs/${jobId}/complete`
       );
       return res.job;
+    },
+
+    completeJob: async (jobId: string) => {
+      const res = await callApi<{ job: Booking }>(
+        'POST',
+        `/api/technician/jobs/${jobId}/complete`
+      );
+      return res.job;
+    },
+
+    getEarnings: async (technicianId?: string) => {
+      const query = technicianId ? `?technicianId=${technicianId}` : '';
+      const res = await callApi<{ earnings: TechnicianEarnings }>(
+        'GET',
+        `/api/technician/earnings${query}`
+      );
+      return res.earnings;
     },
   },
 

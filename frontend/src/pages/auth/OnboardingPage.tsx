@@ -16,13 +16,13 @@ export const OnboardingPage: React.FC = () => {
     },
     {
       title: 'Match → Book',
-      desc: 'NEXDO matches verified nearby technicians who have the exact capabilities needed, upfront pricing, and immediate availability.',
+      desc: 'NEXDO matches verified nearby service providers who have the exact capabilities needed, upfront pricing, and immediate availability.',
       icon: <CheckCircle2 className="w-10 h-10 text-emerald-600" />,
       tag: 'Step 2',
     },
     {
       title: 'One Account, Dual Persona',
-      desc: 'Use the same single NEXDO account as a Customer needing service, or as a verified Technician finding service opportunities.',
+      desc: 'Use the same single NEXDO account as a Customer needing service, or as a verified Service Provider finding service opportunities.',
       icon: <Shield className="w-10 h-10 text-indigo-600" />,
       tag: 'Step 3',
     },

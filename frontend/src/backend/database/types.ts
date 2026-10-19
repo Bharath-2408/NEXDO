@@ -6,7 +6,10 @@ export type UserRole = 'CUSTOMER' | 'TECHNICIAN' | 'ADMIN';
 
 export interface UserRecord {
   id: string;
+  username?: string | null;
   email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   phone: string;
   password_hash: string;
   role: UserRole;
@@ -32,6 +35,8 @@ export interface SessionRecord {
 export interface CustomerProfileRecord {
   id: string;
   user_id: string;
+  first_name?: string | null;
+  last_name?: string | null;
   full_name: string;
   phone: string;
   email?: string | null;
@@ -49,6 +54,8 @@ export interface ProfileRecord {
   id: string;
   user_id?: string | null;
   role: 'CUSTOMER' | 'TECHNICIAN';
+  first_name?: string | null;
+  last_name?: string | null;
   name: string;
   phone: string;
   email?: string | null;
@@ -83,6 +90,8 @@ export interface ServiceCategoryRecord {
 export interface TechnicianProfileRecord {
   id: string;
   profile_id: string;
+  first_name?: string | null;
+  last_name?: string | null;
   name: string;
   phone: string;
   email?: string;
@@ -103,6 +112,10 @@ export interface TechnicianProfileRecord {
   bio?: string;
   badges: string[];
   subscription_plan?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  location_updated_at?: string | null;
+  is_location_shared?: boolean;
   last_seen_at?: string;
   created_at: string;
   updated_at: string;
@@ -228,6 +241,8 @@ export interface BookingRecord {
   appointment_date?: string;
   appointment_time?: string;
   address: string;
+  latitude?: number | null;
+  longitude?: number | null;
   service_mode: 'DIAGNOSIS' | 'SERVICE';
   diagnosis_fee?: number;
   service_amount?: number;
@@ -241,6 +256,17 @@ export interface BookingRecord {
   idempotency_key?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface TechnicianLocationRecord {
+  id: string;
+  technician_id: string;
+  latitude: number;
+  longitude: number;
+  accuracy_meters?: number | null;
+  speed_mps?: number | null;
+  heading_degrees?: number | null;
+  recorded_at: string;
 }
 
 export interface BookingEventRecord {

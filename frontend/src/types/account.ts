@@ -2,6 +2,8 @@ export type UserRole = 'CUSTOMER' | 'TECHNICIAN';
 
 export interface CustomerProfile {
   id: string;
+  firstName?: string;
+  lastName?: string;
   name: string;
   phone: string;
   dob?: string;
@@ -42,6 +44,8 @@ export interface SubscriptionState {
 
 export interface TechnicianProfile {
   id: string;
+  firstName?: string;
+  lastName?: string;
   name: string;
   phone: string;
   dob?: string;
@@ -63,6 +67,8 @@ export interface TechnicianProfile {
 
 export interface UserAccount {
   id: string;
+  firstName?: string;
+  lastName?: string;
   name: string;
   phone: string;
   dob?: string;

@@ -17,9 +17,9 @@ export const TechnicianCapabilitiesPage: React.FC = () => {
       </button>
 
       <div>
-        <h2 className="text-2xl font-black text-[#071A36]">Multi-Skill Capability Management</h2>
+        <h2 className="text-2xl font-black text-[#071A36]">Your Service Domains</h2>
         <p className="text-xs text-slate-500 mt-1">
-          A NEXDO technician is not restricted to a single category. Configure all services you can execute.
+          A NEXDO service provider is not restricted to a single category. Configure all services you can execute.
         </p>
       </div>
 

@@ -229,6 +229,42 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         };
         setActiveLanguageState(newLangState);
 
+        // Check for pending action confirmation (e.g. user says "ஆமா" / "yes" to confirm booking/payment)
+        if (
+          pendingActionRef.current &&
+          (result.action.type === 'CONFIRM' ||
+            result.action.type === 'YES' ||
+            result.intent === 'CONFIRM' ||
+            result.intent === 'YES' ||
+            cleanTranscript === 'ஆமா' ||
+            cleanTranscript.toLowerCase() === 'yes')
+        ) {
+          const confirmedAction = pendingActionRef.current;
+          confirmPendingAction();
+
+          const turn: ConversationTurn = {
+            turnId: `turn_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            timestamp: Date.now(),
+            rawTranscript: cleanTranscript,
+            normalizedTranscript: cleanTranscript,
+            detectedLanguage: targetLang,
+            languageConfidence: 1.0,
+            intent: confirmedAction.type,
+            canonicalService: undefined,
+            entities: confirmedAction.payload,
+            contextSnapshot: { ...conversationContextRef.current },
+            action: confirmedAction,
+            responseText: targetLang.startsWith('ta') ? 'உறுதி செய்யப்பட்டது.' : 'Confirmed.',
+            responseLanguage: targetLang,
+            ttsLocale: ttsLang,
+            ttsStatus: 'SPEAKING',
+            requiresConfirmation: false,
+          };
+          setTurns((prev) => [...prev, turn]);
+          setActiveTurn(turn);
+          return;
+        }
+
         const updatedContextDelta: Partial<ConversationContext> = {
           conversationLanguage: targetLang,
         };

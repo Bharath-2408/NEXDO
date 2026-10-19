@@ -11,7 +11,7 @@ import { resolveContextualAction } from '../voice/contextResolver';
 import { useTechnician } from '../store/TechnicianContext';
 
 export const TechnicianLayout: React.FC = () => {
-  const { toast, clearToast, showToast } = useApp();
+  const { toast, clearToast, showToast, isAuthenticated, isAuthLoading, currentRole, saveLastAuthorizedPage } = useApp();
   const { setActionCallback, updateConversationContext } = useVoice();
   const {
     opportunities,
@@ -26,8 +26,23 @@ export const TechnicianLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Authentication & Role Isolation Route Guard
+  useEffect(() => {
+    if (isAuthLoading) return;
+    if (!isAuthenticated) {
+      navigate('/login?role=technician', { replace: true });
+      return;
+    }
+    if (currentRole === 'CUSTOMER') {
+      navigate('/customer', { replace: true });
+      return;
+    }
+    saveLastAuthorizedPage('TECHNICIAN', location.pathname + location.search);
+  }, [isAuthenticated, isAuthLoading, currentRole, location.pathname, location.search, navigate, saveLastAuthorizedPage]);
+
   // Synchronize Live Conversation Context
   useEffect(() => {
+    if (!isAuthenticated || currentRole === 'CUSTOMER') return;
     updateConversationContext({
       currentScreen: location.pathname,
       role: 'technician',
@@ -50,9 +65,10 @@ export const TechnicianLayout: React.FC = () => {
           }
         : undefined,
     });
-  }, [location.pathname, opportunities, activeJob, updateConversationContext]);
+  }, [isAuthenticated, currentRole, location.pathname, opportunities, activeJob, updateConversationContext]);
 
   useEffect(() => {
+    if (!isAuthenticated || currentRole === 'CUSTOMER') return;
     setActionCallback((action) => {
       const resolved = resolveContextualAction(action, {
         currentPath: window.location.pathname,
@@ -104,7 +120,19 @@ export const TechnicianLayout: React.FC = () => {
         showToast,
       });
     });
-  }, [opportunities, activeJob, navigate, location.pathname, setActionCallback, acceptOpportunity, rejectOpportunity, setOnlineStatus, startWork, advanceTechnicianStep, activateSubscription, showToast]);
+  }, [isAuthenticated, currentRole, opportunities, activeJob, navigate, location.pathname, setActionCallback, acceptOpportunity, rejectOpportunity, setOnlineStatus, startWork, advanceTechnicianStep, activateSubscription, showToast]);
+
+  if (isAuthLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-50" role="status" aria-label="Loading session">
+        <div className="w-8 h-8 rounded-full border-3 border-blue-600/30 border-t-blue-600 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || currentRole === 'CUSTOMER') {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 pb-24 sm:pb-28">

@@ -25,7 +25,7 @@ export const BookingConfirmationPage: React.FC = () => {
           Ref: {booking.referenceCode}
         </h2>
         <p className="text-xs text-slate-500 mt-1">
-          Your service coordination is locked. The assigned technician will arrive during the scheduled window.
+          Your service coordination is locked. The assigned service provider will arrive during the scheduled window.
         </p>
 
         {/* Details Card */}
@@ -35,7 +35,7 @@ export const BookingConfirmationPage: React.FC = () => {
             <span className="font-bold text-slate-900">{booking.serviceTitle}</span>
           </div>
           <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-            <span className="text-slate-500">Assigned Pro</span>
+            <span className="text-slate-500">Assigned Service Provider</span>
             <span className="font-bold text-slate-900">{booking.provider.name}</span>
           </div>
           <div className="flex items-center justify-between pb-2 border-b border-slate-200">

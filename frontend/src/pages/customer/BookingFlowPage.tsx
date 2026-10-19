@@ -1,11 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, MapPin, ArrowRight, Check, Clock } from 'lucide-react';
+import {
+  ArrowLeft,
+  MapPin,
+  ArrowRight,
+  Check,
+  Clock,
+  Navigation,
+  AlertCircle,
+  Loader2,
+} from 'lucide-react';
 import { useCustomer } from '../../store/CustomerContext';
 import { useApp } from '../../store/AppContext';
 import { useVoice } from '../../voice/VoiceContext';
 import { Button } from '../../components/ui/Button';
 import { ServiceMode } from '../../types/customer';
+import { useGeolocation } from '../../hooks/useGeolocation';
+import { InteractiveMap } from '../../components/map/InteractiveMap';
+import { isValidCoordinate } from '../../utils/geoUtils';
 
 const TIME_SLOTS = [
   'Tomorrow · 10:00 AM',
@@ -28,21 +40,50 @@ export const BookingFlowPage: React.FC = () => {
   const provider =
     (providerId ? getProviderById(providerId) : null) ||
     selectedProvider ||
-    getProviderById('prov_ravi');
+    null;
 
   const [serviceMode, setServiceMode] = useState<ServiceMode>('DIAGNOSIS');
   const [selectedSlot, setSelectedSlot] = useState<string>('');
-  const selectedAddress =
-    user.customerProfile.savedAddresses[0]?.address || '42, Sengunthapuram 3rd Cross, Karur, TN 639002';
+  const [address, setAddress] = useState<string>(
+    user.customerProfile.savedAddresses[0]?.address || '42, Sengunthapuram 3rd Cross, Karur, TN 639002'
+  );
+  const [selectedCoords, setSelectedCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [specialNotes, setSpecialNotes] = useState(activeNeed?.specificIssue || '');
 
+  // Real device/browser Geolocation integration
+  const geo = useGeolocation({
+    enableHighAccuracy: true,
+    timeout: 15000,
+    autoReverseGeocode: true,
+    accuracyThresholdMeters: 500,
+  });
+
+  // When GPS detects location, update coordinates and address
+  useEffect(() => {
+    if (geo.coords && isValidCoordinate(geo.coords.latitude, geo.coords.longitude)) {
+      setSelectedCoords({ latitude: geo.coords.latitude, longitude: geo.coords.longitude });
+      if (geo.address) {
+        setAddress(geo.address);
+      }
+    }
+  }, [geo.coords, geo.address]);
+
   const handleConfirmBooking = () => {
-    if (!provider || !selectedSlot || selectedSlot.trim().length === 0) {
-      showToast('Please select an appointment time slot first', 'warning');
+    if (!provider) {
+      showToast('Please select a service provider first', 'warning');
       return;
     }
-    const booking = createBooking(provider.id, selectedSlot, selectedAddress, specialNotes, serviceMode);
-    showToast('Booking successfully created!', 'success');
+    const slotToUse = selectedSlot && selectedSlot.trim().length > 0 ? selectedSlot : 'Within 45 mins';
+    const booking = createBooking(
+      provider.id,
+      slotToUse,
+      address,
+      specialNotes,
+      serviceMode,
+      selectedCoords?.latitude,
+      selectedCoords?.longitude
+    );
+    showToast('Booking successfully created with service location!', 'success');
     navigate(`/customer/booking-confirmation/${booking.id}`);
   };
 
@@ -109,7 +150,7 @@ export const BookingFlowPage: React.FC = () => {
         showToast('Removed last sentence from notes', 'info');
         return true;
       }
-      if (action.type === 'CONFIRM_BOOKING') {
+      if (action.type === 'CONFIRM_BOOKING' || action.type === 'CONFIRM') {
         handleConfirmRef.current();
         return true;
       }
@@ -126,12 +167,12 @@ export const BookingFlowPage: React.FC = () => {
   if (!provider) {
     return (
       <div className="max-w-xl mx-auto text-center py-12">
-        <p className="text-slate-600 mb-4">No technician selected.</p>
+        <p className="text-slate-600 mb-4">No service provider selected.</p>
         <button
           onClick={() => navigate('/customer/providers')}
           className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold"
         >
-          Select a Technician
+          Select a Service Provider
         </button>
       </div>
     );
@@ -151,7 +192,7 @@ export const BookingFlowPage: React.FC = () => {
         <h2 className="text-2xl font-black text-[#071A36]">Confirm Service Booking</h2>
         <p className="text-xs text-slate-500 mt-1">Review your service schedule and coordination details.</p>
 
-        {/* Technician Summary */}
+        {/* Service Provider Summary */}
         <div className="my-5 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img src={provider.avatar} alt={provider.name} className="w-12 h-12 rounded-xl object-cover border border-slate-200" />
@@ -200,7 +241,7 @@ export const BookingFlowPage: React.FC = () => {
               </div>
               <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
                 <li>₹149 diagnosis fee</li>
-                <li>Technician visits and diagnoses the issue</li>
+                <li>Service provider visits and diagnoses the issue</li>
                 <li>Repair/service price is decided after diagnosis</li>
               </ul>
             </button>
@@ -227,7 +268,7 @@ export const BookingFlowPage: React.FC = () => {
               <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
                 <li>Directly request the service/repair</li>
                 <li>No mandatory ₹149 diagnosis fee</li>
-                <li>Repair quotation agreed upon technician arrival</li>
+                <li>Repair quotation agreed upon service provider arrival</li>
               </ul>
             </button>
           </div>
@@ -280,21 +321,102 @@ export const BookingFlowPage: React.FC = () => {
           )}
         </div>
 
-        {/* Address Selection */}
-        <div className="mb-5">
-          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-            Service Address
-          </label>
-          <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-800 flex items-start gap-2">
-            <MapPin className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-            <span>{selectedAddress}</span>
+        {/* Address Selection with Real GPS Integration */}
+        <div className="mb-5 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+              Service Address & Location *
+            </label>
+            <button
+              type="button"
+              onClick={() => geo.getCurrentLocation()}
+              disabled={geo.loading}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {geo.loading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Navigation className="w-3.5 h-3.5" />
+              )}
+              <span>{geo.loading ? 'Detecting GPS...' : 'Use My Current Location'}</span>
+            </button>
           </div>
+
+          {/* GPS Error & Fallback Banner */}
+          {geo.error && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2 animate-fade-in">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="font-semibold">{geo.error}</p>
+                <p className="text-[11px] text-amber-700">
+                  You can type or adjust your exact service address manually in the box below.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* GPS Low Accuracy Warning */}
+          {geo.accuracyWarning && geo.coords && (
+            <div className="p-2.5 rounded-xl bg-sky-50 border border-sky-200 text-[11px] text-sky-800 flex items-center gap-2">
+              <AlertCircle className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+              <span>
+                GPS accuracy is ±{Math.round(geo.coords.accuracy || 0)}m. Please double-check the address below.
+              </span>
+            </div>
+          )}
+
+          {/* Address Text Area / Input */}
+          <div className="relative">
+            <div className="absolute top-3 left-3 pointer-events-none">
+              <MapPin className="w-4 h-4 text-blue-600" />
+            </div>
+            <textarea
+              rows={2}
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="Enter complete door no, street, area, city, pincode..."
+              className="w-full pl-9 pr-3 py-2.5 text-xs text-slate-800 border border-slate-300 rounded-xl focus-ring bg-white"
+            />
+          </div>
+
+          {/* Coordinate Status & Map Preview */}
+          {selectedCoords && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
+                <span className="flex items-center gap-1.5 text-emerald-700 font-semibold">
+                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>
+                    GPS Lat: {selectedCoords.latitude.toFixed(4)}, Lon: {selectedCoords.longitude.toFixed(4)}
+                  </span>
+                </span>
+                {geo.coords?.accuracy && (
+                  <span className="text-slate-400">
+                    Accuracy: ±{Math.round(geo.coords.accuracy)}m
+                  </span>
+                )}
+              </div>
+
+              {/* Leaflet interactive map preview of customer service location */}
+              <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-xs">
+                <InteractiveMap
+                  height="180px"
+                  customerLocation={{
+                    latitude: selectedCoords.latitude,
+                    longitude: selectedCoords.longitude,
+                    label: 'Service Location',
+                    accuracy: geo.coords?.accuracy || null,
+                  }}
+                  showRouteLine={false}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Special Instructions */}
         <div className="mb-6">
           <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-            Special Instructions / Notes for Pro
+            Special Instructions / Notes for Service Provider
           </label>
           <textarea
             rows={2}

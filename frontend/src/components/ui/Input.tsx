@@ -25,7 +25,7 @@ export const Input: React.FC<InputProps> = ({
       {label && (
         <label
           htmlFor={inputId}
-          className="block text-xs font-semibold text-slate-700 mb-1.5 tracking-tight"
+          className="block text-xs sm:text-sm font-bold text-slate-800 mb-1.5 tracking-tight"
         >
           {label}
         </label>
@@ -38,8 +38,8 @@ export const Input: React.FC<InputProps> = ({
         )}
         <input
           id={inputId}
-          className={`w-full bg-white border rounded-lg py-2 px-3 text-sm text-slate-900 placeholder-slate-400 transition-colors focus-ring ${
-            leftIcon ? 'pl-9.5' : ''
+          className={`w-full bg-white border rounded-xl py-2.5 sm:py-3 px-3.5 text-sm text-slate-900 placeholder-slate-400 transition-colors focus-ring ${
+            leftIcon ? 'pl-10' : ''
           } ${rightElement ? 'pr-11' : ''} ${
             error
               ? 'border-rose-300 focus:border-rose-500'
@@ -48,7 +48,7 @@ export const Input: React.FC<InputProps> = ({
           {...props}
         />
         {rightElement && (
-          <div className="absolute right-2.5 flex items-center">
+          <div className="absolute right-3 flex items-center">
             {rightElement}
           </div>
         )}

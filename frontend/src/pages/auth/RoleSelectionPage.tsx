@@ -16,7 +16,7 @@ export const RoleSelectionPage: React.FC = () => {
       showToast('Continuing in Customer Mode', 'info');
       navigate('/customer');
     } else {
-      showToast('Continuing in Technician Mode', 'info');
+      showToast('Continuing in Service Provider Mode', 'info');
       navigate('/technician');
     }
   };
@@ -81,7 +81,7 @@ export const RoleSelectionPage: React.FC = () => {
               Book services when you need them.
             </p>
             <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-              Just say what you need using natural voice or text. Get matched with top local verified technicians with upfront pricing.
+              Just say what you need using natural voice or text. Get matched with top local verified service providers with upfront pricing.
             </p>
           </div>
 
@@ -91,7 +91,7 @@ export const RoleSelectionPage: React.FC = () => {
           </div>
         </button>
 
-        {/* TECHNICIAN CARD */}
+        {/* SERVICE PROVIDER CARD */}
         <button
           onClick={() => handleRoleSelect('TECHNICIAN')}
           className="group p-5 sm:p-6 rounded-xl bg-white border border-slate-200 hover:border-blue-500 hover:shadow-md transition-all duration-150 focus-ring active:scale-[0.99] flex flex-col justify-between cursor-pointer"
@@ -102,13 +102,13 @@ export const RoleSelectionPage: React.FC = () => {
                 <Wrench className="w-5 h-5" />
               </div>
               <span className="text-xs font-bold text-slate-400 group-hover:text-blue-600 transition-colors">
-                Pro View
+                Provider View
               </span>
             </div>
 
             <div className="flex items-center gap-2">
               <h3 className="text-base font-extrabold text-[#071A36] tracking-tight">
-                TECHNICIAN
+                SERVICE PROVIDER
               </h3>
               <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 text-[10px] font-bold border border-emerald-200/60">
                 0% Commission
@@ -118,12 +118,12 @@ export const RoleSelectionPage: React.FC = () => {
               Find eligible service opportunities and work.
             </p>
             <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-              Receive voice-dispatched customer requests across your capabilities. Unlimited eligible jobs with daily or monthly access passes.
+              Receive voice-dispatched customer service requests across your domains. Unlimited eligible requests with daily, weekly, or monthly access passes.
             </p>
           </div>
 
           <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-blue-700 group-hover:text-blue-800">
-            <span>Continue as Technician</span>
+            <span>Continue as Service Provider</span>
             <ArrowRight className="w-4 h-4 transform group-hover:translate-x-0.5 transition-transform" />
           </div>
         </button>

@@ -112,7 +112,7 @@ export const LiveTrackingPage: React.FC = () => {
 
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-slate-600 font-medium">Diagnosis OTP for Technician:</span>
+                <span className="text-slate-600 font-medium">Diagnosis OTP for Service Provider:</span>
                 <span className="text-base font-black text-[#071A36] font-mono tracking-widest bg-white px-2.5 py-1 rounded border border-slate-300">
                   {booking.diagnosis?.otp || '4821'}
                 </span>
@@ -147,7 +147,7 @@ export const LiveTrackingPage: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-sm font-extrabold text-[#071A36]">Step 2: Quotation Approval Needed</h3>
-                <p className="text-xs text-slate-500">Review technician's itemized repair estimate</p>
+                <p className="text-xs text-slate-500">Review service provider's itemized repair estimate</p>
               </div>
             </div>
             <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 text-[10px] font-bold">
@@ -207,7 +207,7 @@ export const LiveTrackingPage: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-slate-600 leading-relaxed">
-            Technician <strong>{booking.provider.name}</strong> is currently completing the repair. You will receive a notification and QR code once finished.
+            Service Provider <strong>{booking.provider.name}</strong> is currently completing the repair. You will receive a notification and QR code once finished.
           </p>
         </div>
       )}
@@ -223,7 +223,7 @@ export const LiveTrackingPage: React.FC = () => {
             <span className="text-xs font-black text-blue-700">₹{booking.estimate?.total || 1100}</span>
           </div>
           <p className="text-xs text-slate-600">
-            Technician has finished the service. Scan the transaction-specific NEXDO QR on their device or proceed via the sandbox payment gateway.
+            Service provider has finished the service. Scan the transaction-specific NEXDO QR on their device or proceed via the sandbox payment gateway.
           </p>
           <Button
             fullWidth
@@ -263,7 +263,7 @@ export const LiveTrackingPage: React.FC = () => {
               {booking.finalOtp?.code || '8942'}
             </div>
             <p className="text-xs text-emerald-900 leading-relaxed max-w-sm mx-auto">
-              Please share this <strong>4-digit Final OTP</strong> with your technician after you have inspected their work to verify completion and credit their payout.
+              Please share this <strong>4-digit Final OTP</strong> with your service provider after you have inspected their work to verify completion and credit their payout.
             </p>
           </div>
 
@@ -277,7 +277,7 @@ export const LiveTrackingPage: React.FC = () => {
               }}
               className="text-xs"
             >
-              Simulate Technician Verified OTP
+              Simulate Service Provider Verified OTP
             </Button>
           </div>
         </div>

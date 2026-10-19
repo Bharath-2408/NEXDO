@@ -40,7 +40,7 @@ export const VoiceInteractionHero: React.FC = () => {
     { label: 'TV Repair (Spoken)', text: 'TV repair venum', lang: 'ta' },
     { label: 'Fan Repair (English)', text: 'Need an electrician to fix fan', lang: 'en' },
     { label: 'My Bookings', text: 'என் முன்பதிவுகளைக் காட்டு', lang: 'ta' },
-    { label: 'Track Tech', text: 'Where is my technician?', lang: 'en' },
+    { label: 'Track Provider', text: 'Where is my service provider?', lang: 'en' },
     { label: 'Plumber', text: 'Plumbing leak fix venum', lang: 'ta' },
   ];
 
@@ -67,7 +67,7 @@ export const VoiceInteractionHero: React.FC = () => {
           Just say what you need.
         </h1>
         <p className="text-slate-600 text-xs sm:text-sm mt-1.5 leading-relaxed max-w-md mx-auto">
-          Speak naturally in <strong>Tamil</strong> or <strong>English</strong>. NEXDO identifies your problem, locates verified technicians, and coordinates your service in seconds.
+          Speak naturally in <strong>Tamil</strong> or <strong>English</strong>. NEXDO identifies your problem, locates verified service providers, and coordinates your service in seconds.
         </p>
       </div>
 

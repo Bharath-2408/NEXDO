@@ -76,14 +76,7 @@ export class AuthSecurity {
         );
       }
 
-      // Browser client-side fallback
-      if (
-        password === 'password123' &&
-        originalHash ===
-          '6be91d2a3f4a26145009cb394085dd3ecd14e663d99b679fb0212d466c08cf842ca9f11c8aacc89b393ac46c0b3a98e4c10f56525bad47d4c9177e6a9ab0696e'
-      ) {
-        return true;
-      }
+      // Browser client-side fallback: reject invalid passwords safely
       return false;
     } catch {
       return false;
@@ -170,6 +163,20 @@ export class AuthSecurity {
 }
 
 /**
+ * Custom error thrown when a rate limit is exceeded
+ */
+export class RateLimitError extends Error {
+  public readonly status = 429;
+  public readonly retryAfterSeconds: number;
+
+  constructor(message: string, retryAfterSeconds: number) {
+    super(message);
+    this.name = 'RateLimitError';
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+/**
  * In-memory distributed-ready Rate Limiter with progressive backoff
  */
 export interface RateLimitStatus {
@@ -181,7 +188,7 @@ export interface RateLimitStatus {
 export class RateLimiter {
   private static store = new Map<
     string,
-    { count: number; windowStart: number; blockedUntil?: number }
+    { count: number; windowStart: number; blockedUntil?: number; lastAttempt?: number }
   >();
 
   /**
@@ -213,12 +220,13 @@ export class RateLimiter {
 
       // Check if window has expired
       if (now - entry.windowStart > windowMs) {
-        this.store.set(key, { count: 1, windowStart: now });
+        this.store.set(key, { count: 1, windowStart: now, lastAttempt: now });
         return { allowed: true, remaining: maxAttempts - 1, retryAfterSeconds: 0 };
       }
 
       // Within window: increment
       entry.count++;
+      entry.lastAttempt = now;
       if (entry.count > maxAttempts) {
         entry.blockedUntil = now + lockoutMs;
         const retryAfterSeconds = Math.ceil(lockoutMs / 1000);
@@ -237,8 +245,95 @@ export class RateLimiter {
     }
 
     // New entry
-    this.store.set(key, { count: 1, windowStart: now });
+    this.store.set(key, { count: 1, windowStart: now, lastAttempt: now });
     return { allowed: true, remaining: maxAttempts - 1, retryAfterSeconds: 0 };
+  }
+
+  /**
+   * Enforces rate limit and throws RateLimitError if exceeded
+   */
+  public static enforce(
+    key: string,
+    maxAttempts: number = 5,
+    windowMs: number = 60000,
+    lockoutMs: number = 300000,
+    actionName: string = 'requests'
+  ): void {
+    const status = this.check(key, maxAttempts, windowMs, lockoutMs);
+    if (!status.allowed) {
+      throw new RateLimitError(
+        `Too many ${actionName}. Please wait ${status.retryAfterSeconds} seconds before trying again.`,
+        status.retryAfterSeconds
+      );
+    }
+  }
+
+  /**
+   * Login rate limiting: 5 attempts per 5m per identifier, 20 per 15m per IP
+   */
+  public static checkLogin(identifier: string, ip?: string): void {
+    if (ip && ip !== 'unknown') {
+      this.enforce(`login:ip:${ip}`, 20, 900000, 900000, 'login attempts from this network');
+    }
+    if (identifier) {
+      this.enforce(`login:acc:${identifier}`, 5, 300000, 900000, 'login attempts');
+    }
+  }
+
+  /**
+   * Registration rate limiting: 3 attempts per hour per identifier, 10 per hour per IP
+   */
+  public static checkRegister(identifier: string, ip?: string): void {
+    if (ip && ip !== 'unknown') {
+      this.enforce(`register:ip:${ip}`, 10, 3600000, 3600000, 'registration attempts from this network');
+    }
+    if (identifier) {
+      this.enforce(`register:acc:${identifier}`, 3, 3600000, 3600000, 'registration attempts');
+    }
+  }
+
+  /**
+   * Forgot password OTP sending: 3 requests per 15m per identifier with 60s cooldown
+   */
+  public static checkForgotPassword(identifier: string, ip?: string): void {
+    const now = Date.now();
+    // Check 60-second cooldown
+    const cooldownKey = `forgot:cooldown:${identifier}`;
+    const cdEntry = this.store.get(cooldownKey);
+    if (cdEntry?.blockedUntil && now < cdEntry.blockedUntil) {
+      const wait = Math.ceil((cdEntry.blockedUntil - now) / 1000);
+      throw new RateLimitError(
+        `Please wait ${wait} seconds before requesting another reset code.`,
+        wait
+      );
+    }
+
+    if (ip && ip !== 'unknown') {
+      this.enforce(`forgot:ip:${ip}`, 10, 900000, 900000, 'reset requests from this network');
+    }
+    this.enforce(`forgot:acc:${identifier}`, 3, 900000, 900000, 'password reset requests');
+
+    // Set 60s cooldown
+    this.store.set(cooldownKey, { count: 1, windowStart: now, blockedUntil: now + 60000 });
+  }
+
+  /**
+   * OTP verification attempts: 5 per 15m per identifier
+   */
+  public static checkVerifyOtp(identifier: string, ip?: string): void {
+    if (ip && ip !== 'unknown') {
+      this.enforce(`verify_otp:ip:${ip}`, 15, 900000, 900000, 'verification attempts from this network');
+    }
+    this.enforce(`verify_otp:acc:${identifier}`, 5, 900000, 900000, 'OTP verification attempts');
+  }
+
+  /**
+   * Password reset attempts: 5 per 15m per IP
+   */
+  public static checkResetPassword(ip?: string): void {
+    if (ip && ip !== 'unknown') {
+      this.enforce(`reset_pwd:ip:${ip}`, 5, 900000, 900000, 'password reset attempts from this network');
+    }
   }
 
   /**

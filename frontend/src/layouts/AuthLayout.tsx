@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, Home } from 'lucide-react';
 import { FloatingVoiceButton } from '../components/voice/FloatingVoiceButton';
 import { Toast } from '../components/ui/Toast';
 import { useApp } from '../store/AppContext';
@@ -19,37 +19,50 @@ export const AuthLayout: React.FC = () => {
   }, [location.pathname, updateConversationContext]);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-between p-4 sm:p-6">
+    <div className="min-h-screen w-full bg-slate-50 flex flex-col justify-between px-4 sm:px-6 lg:px-8 py-4 sm:py-6 overflow-x-hidden">
       {toast && <Toast message={toast.message} type={toast.type} onClose={clearToast} />}
 
-      {/* Top Brand Bar */}
-      <div className="w-full max-w-md mx-auto flex items-center justify-between pt-2">
-        <Link to="/" className="flex items-center gap-2 focus-ring rounded-lg">
-          <div className="w-8 h-8 rounded-xl bg-[#071A36] flex items-center justify-center text-sky-400 font-black text-sm">
-            N
-          </div>
-          <span className="text-base font-black tracking-tight text-[#071A36]">
-            NEXDO
-          </span>
-        </Link>
-        <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-500">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+      {/* Top Brand & Navigation Header (560–640px centered alignment) */}
+      <header className="w-full max-w-[600px] mx-auto flex flex-wrap items-center justify-between gap-3 pt-1 sm:pt-2">
+        <div className="flex items-center gap-3">
+          <Link
+            to="/?public=1"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 text-slate-700 hover:text-[#071A36] text-xs sm:text-sm font-bold shadow-2xs transition-all focus-ring"
+            aria-label="Return to NEXDO Public Home Page"
+          >
+            <Home className="w-4 h-4 text-blue-600 shrink-0" />
+            <span>Home</span>
+          </Link>
+
+          <Link to="/?public=1" className="flex items-center gap-2 focus-ring rounded-lg">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#071A36] flex items-center justify-center text-sky-400 font-black text-sm sm:text-base shadow-xs">
+              N
+            </div>
+            <span className="text-base sm:text-lg font-black tracking-tight text-[#071A36]">
+              NEXDO
+            </span>
+          </Link>
+        </div>
+
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200/80 text-xs font-bold text-emerald-800">
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
           <span>Verified Platform</span>
         </div>
-      </div>
+      </header>
 
-      {/* Auth Content Area */}
-      <main className="w-full max-w-md mx-auto my-auto py-6">
+      {/* Auth Content Area (Centered 600px max width for laptop & desktop) */}
+      <main className="w-full max-w-[600px] mx-auto my-auto py-6 sm:py-8">
         <Outlet />
       </main>
 
       {/* Floating Voice Assistant */}
       <FloatingVoiceButton />
 
-      {/* Footer Disclaimer */}
-      <footer className="w-full max-w-md mx-auto text-center pb-4 text-[11px] text-slate-400">
-        NEXDO Platform · One account for Customer & Technician · India 2026
+      {/* Footer Disclaimer kept comfortably separated from the card */}
+      <footer className="w-full max-w-[600px] mx-auto text-center pt-4 pb-2 text-xs text-slate-500">
+        NEXDO Platform · Voice-First Everyday Services · Zero Booking Commission · 2026
       </footer>
     </div>
   );
 };
+

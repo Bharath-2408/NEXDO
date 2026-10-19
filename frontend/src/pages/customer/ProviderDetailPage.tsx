@@ -9,10 +9,23 @@ export const ProviderDetailPage: React.FC = () => {
   const { getProviderById, selectProvider } = useCustomer();
   const navigate = useNavigate();
 
-  const provider = (id ? getProviderById(id) : null) || getProviderById('prov_ravi');
+  const provider = id ? getProviderById(id) : null;
 
   if (!provider) {
-    return <div className="py-10 text-center text-slate-500">Provider not found</div>;
+    return (
+      <div className="max-w-md mx-auto text-center py-16 space-y-4">
+        <h3 className="text-lg font-bold text-slate-800">Service Provider Not Found</h3>
+        <p className="text-xs text-slate-500">
+          The requested service provider could not be found or is not currently active.
+        </p>
+        <button
+          onClick={() => navigate('/customer/providers')}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl cursor-pointer"
+        >
+          View Available Providers
+        </button>
+      </div>
+    );
   }
 
   const handleBook = () => {
@@ -44,28 +57,38 @@ export const ProviderDetailPage: React.FC = () => {
               {provider.verified && (
                 <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200 flex items-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  Verified Pro
+                  Verified Service Provider
                 </span>
               )}
             </div>
             <p className="text-xs font-bold text-blue-700 mt-0.5">{provider.primaryCapability}</p>
 
-            <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
-              <span className="flex items-center gap-1">
-                <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                <span className="font-bold text-slate-900">{provider.rating}</span> ({provider.reviewCount} reviews)
-              </span>
+            <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-500">
+              {provider.reviewCount > 0 ? (
+                <span className="flex items-center gap-1">
+                  <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                  <span className="font-bold text-slate-900">{provider.rating}</span> ({provider.reviewCount} reviews)
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 text-[10px] font-bold">
+                  New Pro
+                </span>
+              )}
               <span>·</span>
-              <span>{provider.experienceYears} Years Experience</span>
-              <span>·</span>
-              <span>~{provider.distanceKm} km away</span>
+              <span>{provider.experienceYears ?? 0} Years Experience</span>
+              {provider.distanceKm !== undefined && (
+                <>
+                  <span>·</span>
+                  <span>~{provider.distanceKm} km away</span>
+                </>
+              )}
             </div>
           </div>
         </div>
 
         {/* Bio */}
         <div className="py-4 border-b border-slate-100">
-          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">About Technician</h4>
+          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Service Provider Details</h4>
           <p className="text-sm text-slate-700 leading-relaxed">{provider.bio}</p>
         </div>
 

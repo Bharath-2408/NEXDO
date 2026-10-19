@@ -6,11 +6,8 @@ import {
   BookingStatus,
   ServiceMode,
 } from '../types/customer';
-import { MOCK_MATCHED_PROVIDERS, MOCK_INITIAL_BOOKINGS } from '../constants/mockData';
 import { nexdoApi } from '../api/nexdoApi';
 import { useApp } from './AppContext';
-
-
 
 const ORDERED_STATUS_FLOW: BookingStatus[] = [
   'REQUESTED',
@@ -31,6 +28,10 @@ interface CustomerContextType {
   activeNeed: ServiceNeed | null;
   matchedProviders: MatchedProvider[];
   selectedProvider: MatchedProvider | null;
+  isLoadingProviders: boolean;
+  providersError: string | null;
+  fetchProviders: (serviceCode?: string, area?: string, latitude?: number, longitude?: number, radiusKm?: number) => Promise<void>;
+  fetchNearbyProviders: (latitude: number, longitude: number, radiusKm?: number, serviceCode?: string) => Promise<void>;
   bookings: Booking[];
   activeBooking: Booking | null;
   setActiveNeed: (need: ServiceNeed | null) => void;
@@ -41,7 +42,9 @@ interface CustomerContextType {
     scheduledTime: string,
     address: string,
     notes?: string,
-    serviceMode?: ServiceMode
+    serviceMode?: ServiceMode,
+    latitude?: number,
+    longitude?: number
   ) => Booking;
   cancelBooking: (bookingId: string) => void;
   updateBookingReview: (bookingId: string, rating: number, comment: string, tags: string[]) => void;
@@ -61,9 +64,11 @@ const CustomerContext = createContext<CustomerContextType | undefined>(undefined
 export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useApp();
   const [activeNeed, setActiveNeedState] = useState<ServiceNeed | null>(null);
-  const [matchedProviders, setMatchedProviders] = useState<MatchedProvider[]>(MOCK_MATCHED_PROVIDERS);
-  const [selectedProvider, setSelectedProvider] = useState<MatchedProvider | null>(MOCK_MATCHED_PROVIDERS[0]);
-  
+  const [matchedProviders, setMatchedProviders] = useState<MatchedProvider[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<MatchedProvider | null>(null);
+  const [isLoadingProviders, setIsLoadingProviders] = useState<boolean>(false);
+  const [providersError, setProvidersError] = useState<string | null>(null);
+
   // Initialize bookings with local storage sync fallback
   const [bookings, setBookings] = useState<Booking[]>(() => {
     try {
@@ -72,8 +77,54 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch {
       // Fallback
     }
-    return MOCK_INITIAL_BOOKINGS;
+    return [];
   });
+
+  const fetchProviders = async (serviceCode?: string, area?: string, latitude?: number, longitude?: number, radiusKm?: number) => {
+    setIsLoadingProviders(true);
+    setProvidersError(null);
+    try {
+      const res = await nexdoApi.technicians.search({ serviceCode, area, latitude, longitude, radiusKm });
+      const providersList = res || [];
+      setMatchedProviders(providersList);
+      if (providersList.length > 0) {
+        setSelectedProvider(providersList[0]);
+      } else {
+        setSelectedProvider(null);
+      }
+    } catch (err: any) {
+      setProvidersError(err?.message || 'Failed to load service providers');
+      setMatchedProviders([]);
+      setSelectedProvider(null);
+    } finally {
+      setIsLoadingProviders(false);
+    }
+  };
+
+  const fetchNearbyProviders = async (latitude: number, longitude: number, radiusKm?: number, serviceCode?: string) => {
+    setIsLoadingProviders(true);
+    setProvidersError(null);
+    try {
+      const res = await nexdoApi.technicians.searchNearby({ latitude, longitude, radiusKm, serviceCode });
+      const providersList = res || [];
+      setMatchedProviders(providersList);
+      if (providersList.length > 0) {
+        setSelectedProvider(providersList[0]);
+      } else {
+        setSelectedProvider(null);
+      }
+    } catch (err: any) {
+      setProvidersError(err?.message || 'Failed to load nearby service providers');
+      setMatchedProviders([]);
+      setSelectedProvider(null);
+    } finally {
+      setIsLoadingProviders(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProviders();
+  }, []);
 
   // Sync bookings changes to localStorage and dispatch custom event
   const persistBookings = (newBookings: Booking[]) => {
@@ -112,88 +163,22 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const setActiveNeed = (need: ServiceNeed | null) => {
     setActiveNeedState(need);
     if (!need) {
-      setMatchedProviders(MOCK_MATCHED_PROVIDERS);
-      setSelectedProvider(MOCK_MATCHED_PROVIDERS[0]);
+      fetchProviders();
       return;
     }
-
-    const c = need.canonicalService;
-    if (c === 'TV_REPAIR') {
-      const tvProviders: MatchedProvider[] = [
-        {
-          id: 'prov_tv_01',
-          name: 'Kumaravel Electronics',
-          avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-          rating: 4.9,
-          reviewCount: 284,
-          distanceKm: 1.8,
-          etaMinutes: 20,
-          verified: true,
-          primaryCapability: 'Smart LED & TV Diagnostics',
-          allCapabilities: ['TV Repair', 'Panel Fix', 'Audio Board', 'Electronics'],
-          estimatedPrice: 499,
-          experienceYears: 8,
-          phone: '+91 98401 55667',
-          bio: 'Certified television & electronics specialist with 8+ years experience in LED, OLED, and smart TV motherboard repairs.',
-          badges: ['Top Rated Pro', 'Screen Specialist', 'Fast Arrival'],
-        },
-        {
-          id: 'prov_tv_02',
-          name: 'Vasanth TV Care',
-          avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
-          rating: 4.8,
-          reviewCount: 195,
-          distanceKm: 2.9,
-          etaMinutes: 30,
-          verified: true,
-          primaryCapability: 'Multi-Brand TV & Display Repair',
-          allCapabilities: ['LED TV', 'Motherboard Fix', 'Power Supply'],
-          estimatedPrice: 550,
-          experienceYears: 6,
-          phone: '+91 98402 77889',
-          bio: 'Authorised display panel and power issue repair expert with genuine replacement parts and 30-day service guarantee.',
-          badges: ['Display Pro', 'Verified Genuine Parts'],
-        },
-      ];
-      setMatchedProviders(tvProviders);
-      setSelectedProvider(tvProviders[0]);
-    } else if (c === 'PLUMBER' || c === 'PLUMBING') {
-      const plumberProviders: MatchedProvider[] = [
-        {
-          id: 'prov_plumb_01',
-          name: 'Murugan Plumbing Works',
-          avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
-          rating: 4.9,
-          reviewCount: 312,
-          distanceKm: 1.5,
-          etaMinutes: 15,
-          verified: true,
-          primaryCapability: 'Pipe Leakage & Tap Broken Repair',
-          allCapabilities: ['Plumbing', 'Pipe Repair', 'Drainage', 'Bathroom Fitting'],
-          estimatedPrice: 249,
-          experienceYears: 9,
-          phone: '+91 98403 11223',
-          bio: 'Expert plumber for immediate pipe burst, faucet replacement, water line clogging, and bathroom sanitary repairs.',
-          badges: ['Speedy Arrival', 'Top Rated Plumber', '30-Day Guarantee'],
-        },
-      ];
-      setMatchedProviders(plumberProviders);
-      setSelectedProvider(plumberProviders[0]);
-    } else {
-      setMatchedProviders(MOCK_MATCHED_PROVIDERS);
-      setSelectedProvider(MOCK_MATCHED_PROVIDERS[0]);
-    }
+    const code = need.canonicalService || need.normalizedService;
+    fetchProviders(code, need.location);
   };
 
   const activeBooking =
-    bookings.find((b) => b.status !== 'COMPLETED' && b.status !== 'CANCELLED') || bookings[0];
+    bookings.find((b) => b.status !== 'COMPLETED' && b.status !== 'CANCELLED') || null;
 
   const selectProvider = (provider: MatchedProvider | null) => {
     setSelectedProvider(provider);
   };
 
   const getProviderById = (id: string) => {
-    return matchedProviders.find((p) => p.id === id) || MOCK_MATCHED_PROVIDERS.find((p) => p.id === id);
+    return matchedProviders.find((p) => p.id === id);
   };
 
   const createBooking = (
@@ -201,27 +186,38 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     scheduledTime: string,
     address: string,
     notes?: string,
-    serviceMode: ServiceMode = 'DIAGNOSIS'
+    serviceMode: ServiceMode = 'DIAGNOSIS',
+    latitude?: number,
+    longitude?: number
   ): Booking => {
-    const provider = getProviderById(providerId) || matchedProviders[0];
+    const provider = getProviderById(providerId) || selectedProvider;
+    if (!provider) {
+      throw new Error('Please select a valid service provider to book.');
+    }
     const effectiveCustomerId = user?.id || 'usr_nexdo_001';
     const effectiveCustomerName = user?.name || 'Customer';
     const effectiveCustomerPhone = user?.phone || '9876543210';
+    const bookingId = `bk_${Date.now()}`;
+    const refCode = `NXD-${Math.floor(10000 + Math.random() * 90000)}`;
+    const now = new Date().toISOString();
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
 
     const newBooking: Booking = {
-      id: `bk_${Date.now()}`,
-      referenceCode: `NXD-${Math.floor(10000 + Math.random() * 90000)}`,
+      id: bookingId,
+      referenceCode: refCode,
       customerId: effectiveCustomerId,
       customerName: effectiveCustomerName,
       customerPhone: effectiveCustomerPhone,
       provider,
-      serviceTitle: activeNeed?.normalizedService || 'Air Conditioner Diagnostics & Repair',
+      serviceTitle: activeNeed?.normalizedService || `${provider.primaryCapability} Service`,
       scheduledTime: scheduledTime || 'Today · In 45 mins',
       address: address || '42, Sengunthapuram 3rd Cross, Karur, TN 639002',
-      status: 'ACCEPTED',
-      estimatedPrice: 1100,
-      otpCode: '4821',
-      createdAt: new Date().toISOString(),
+      latitude,
+      longitude,
+      status: 'REQUESTED',
+      estimatedPrice: serviceMode === 'SERVICE' ? (provider.estimatedPrice || 499) : (provider.diagnosisFee || 149),
+      otpCode: otp,
+      createdAt: now,
       serviceMode,
       notes,
       diagnosis:
@@ -229,15 +225,15 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ? undefined
           : {
               fee: 149,
-              findings: 'Preliminary inspection needed. Coil and capacitor testing required.',
+              findings: '',
               isPaid: false,
-              otp: '4821',
+              otp,
               isVerified: false,
             },
       estimate: {
-        parts: 700,
-        labour: 400,
-        total: 1100,
+        parts: 0,
+        labour: serviceMode === 'SERVICE' ? (provider.estimatedPrice || 499) : 0,
+        total: serviceMode === 'SERVICE' ? (provider.estimatedPrice || 499) : 149,
         description: 'Capacitor 45/5 MFD replacement and electrical contact check',
         isApproved: false,
         isPriceLocked: false,
@@ -250,7 +246,7 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         isSandbox: true,
       },
       finalOtp: {
-        code: '8942',
+        code: Math.floor(1000 + Math.random() * 9000).toString(),
         isVerified: false,
       },
     };
@@ -260,11 +256,19 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .create({
         customerId: effectiveCustomerId,
         technicianId: provider.id,
-        serviceTitle: activeNeed?.normalizedService || 'Air Conditioner Diagnostics & Repair',
-        scheduledTime: scheduledTime || 'Today · In 45 mins',
-        address: address || '42, Sengunthapuram 3rd Cross, Karur, TN 639002',
+        serviceTitle: newBooking.serviceTitle,
+        scheduledTime: newBooking.scheduledTime,
+        address: newBooking.address,
+        latitude,
+        longitude,
         serviceMode,
+        status: 'REQUESTED',
         notes,
+      })
+      .then((saved) => {
+        if (saved && saved.id) {
+          setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...saved, provider } : b)));
+        }
       })
       .catch(() => {});
 
@@ -503,6 +507,10 @@ export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         completeWork,
         processPayment,
         verifyFinalOtp,
+        isLoadingProviders,
+        providersError,
+        fetchProviders,
+        fetchNearbyProviders,
       }}
     >
       {children}

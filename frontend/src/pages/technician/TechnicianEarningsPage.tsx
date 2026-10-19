@@ -50,21 +50,27 @@ export const TechnicianEarningsPage: React.FC = () => {
       <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
         <h3 className="text-base font-extrabold text-[#071A36] mb-4">Recent Job Payouts</h3>
         <div className="space-y-3">
-          {earnings.recentPayouts.map((p) => (
-            <div
-              key={p.id}
-              className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between"
-            >
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">{p.jobTitle}</h4>
-                <p className="text-xs text-slate-400 mt-0.5">{p.customerMasked} · {p.date}</p>
-              </div>
-              <div className="text-right">
-                <span className="text-sm font-extrabold text-emerald-700">+₹{p.amount}</span>
-                <span className="text-[10px] text-slate-400 block">Settled</span>
-              </div>
+          {earnings.recentPayouts.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-xs font-medium bg-slate-50 rounded-2xl border border-slate-100">
+              No payouts recorded yet. Completed jobs will reflect here with 100% payout.
             </div>
-          ))}
+          ) : (
+            earnings.recentPayouts.map((p) => (
+              <div
+                key={p.id}
+                className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between"
+              >
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">{p.jobTitle}</h4>
+                  <p className="text-xs text-slate-400 mt-0.5">{p.customerMasked} · {p.date}</p>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-extrabold text-emerald-700">+₹{p.amount}</span>
+                  <span className="text-[10px] text-slate-400 block">Settled</span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

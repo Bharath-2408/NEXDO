@@ -14,7 +14,7 @@ export const CustomerReviewPage: React.FC = () => {
   const booking = bookings.find((b) => b.id === bookingId) || bookings[0];
 
   const [rating, setRating] = useState(5);
-  const [comment, setComment] = useState('Excellent service, technician arrived on time and fixed cooling quickly.');
+  const [comment, setComment] = useState('Excellent service, service provider arrived on time and fixed cooling quickly.');
   const [selectedTags, setSelectedTags] = useState<string[]>(['Punctual', 'Expert Work']);
 
   const availableTags = [
@@ -34,7 +34,7 @@ export const CustomerReviewPage: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     updateBookingReview(booking.id, rating, comment, selectedTags);
-    showToast('Thank you for rating your technician!', 'success');
+    showToast('Thank you for rating your service provider!', 'success');
     navigate('/customer/bookings');
   };
 

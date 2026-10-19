@@ -210,7 +210,7 @@ export const ACTION_REGISTRY: ActionDefinition[] = [
         tanglish: ['thedu', 'kaatu', 'paaru', 'find', 'show', 'search', 'thedu', 'po'],
       },
       targetNouns: {
-        en: ['technician', 'technicians', 'mechanic', 'electrician', 'plumber', 'pros', 'providers'],
+        en: ['technician', 'technicians', 'service provider', 'service providers', 'mechanic', 'electrician', 'plumber', 'pros', 'providers'],
         ta: ['டெக்னிஷியன்', 'டெக்னீஷியன்', 'டெக்னீசியன்', 'மெக்கானிக்', 'தொழிலாளி', 'நிபுணர்'],
         tanglish: ['technician', 'technicians', 'technician-a', 'aalu', 'mechanic'],
       },
@@ -230,6 +230,13 @@ export const ACTION_REGISTRY: ActionDefinition[] = [
           'search for service providers',
           'please find a technician',
           'i need a technician',
+          'find service provider',
+          'find a service provider',
+          'find service providers',
+          'show service providers',
+          'service providers',
+          'service provider',
+          'open service provider list',
         ],
         ta: [
           'டெக்னிஷியன் தேடு',
@@ -591,7 +598,7 @@ export const ACTION_REGISTRY: ActionDefinition[] = [
         tanglish: ['maathu', 'change', 'switch', 'po'],
       },
       targetNouns: {
-        en: ['technician', 'technician mode', 'pro mode', 'technician side'],
+        en: ['technician', 'technician mode', 'pro mode', 'technician side', 'service provider', 'service provider mode', 'provider mode'],
         ta: ['டெக்னிஷியன்', 'டெக்னீஷியன்', 'டெக்னிஷியன் மோடு', 'தொழிலாளர் முறை'],
         tanglish: ['technician', 'technician mode', 'technician side'],
       },
@@ -603,6 +610,11 @@ export const ACTION_REGISTRY: ActionDefinition[] = [
           'open technician mode',
           'open technician side',
           'technician page',
+          'service provider mode',
+          'switch to service provider',
+          'switch to service provider mode',
+          'go to service provider',
+          'service provider page',
         ],
         ta: [
           'டெக்னிஷியன் மோடுக்கு போ',
@@ -675,7 +687,7 @@ export const ACTION_REGISTRY: ActionDefinition[] = [
         tanglish: ['select pannu', 'choose pannu', 'book pannu', 'eduthukko'],
       },
       targetNouns: {
-        en: ['this technician', 'technician', 'pro', 'provider', 'first one', 'second one'],
+        en: ['this technician', 'technician', 'pro', 'provider', 'first one', 'second one', 'this service provider', 'service provider'],
         ta: ['இந்த technician', 'இந்த டெக்னிஷியன்', 'இவரை', 'முதல் technician', 'முதல் ஆளு'],
         tanglish: ['indha technician', 'technician-a', 'ivara', 'first technician', 'first one'],
       },
@@ -688,6 +700,10 @@ export const ACTION_REGISTRY: ActionDefinition[] = [
           'choose first technician',
           'pick this pro',
           'choose technician',
+          'select this service provider',
+          'choose this service provider',
+          'book this service provider',
+          'select service provider',
         ],
         ta: [
           'இந்த technician-ஐ select பண்ணு',
@@ -734,7 +750,7 @@ export const ACTION_REGISTRY: ActionDefinition[] = [
         tanglish: ['kaatu', 'open', 'thira', 'paaru'],
       },
       targetNouns: {
-        en: ['his profile', 'profile', 'technician profile', 'details', 'bio'],
+        en: ['his profile', 'profile', 'technician profile', 'details', 'bio', 'service provider profile', 'service provider details'],
         ta: ['இவரோட profile', 'டெக்னிஷியன் விவரம்', 'சுயவிவரம்', 'அவரது சுயவிவரம்'],
         tanglish: ['ivara profile', 'technician profile', 'ivaroada profile', 'ivar profile'],
       },
@@ -746,6 +762,9 @@ export const ACTION_REGISTRY: ActionDefinition[] = [
           'show technician profile',
           'technician profile open',
           'view profile',
+          'show service provider profile',
+          'view service provider details',
+          'service provider profile open',
         ],
         ta: [
           'இவரோட profile காட்டு',

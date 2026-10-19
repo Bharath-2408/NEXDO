@@ -11,16 +11,22 @@
     "test:voice": "tsx src/voice/__tests__/verify_voice_system.ts",
     "test:backend": "tsx src/backend/__tests__/verify_backend_system.ts",
     "test:security": "tsx src/backend/__tests__/verify_security_and_auth.ts",
-    "test": "npm run test:voice && npm run test:backend && npm run test:security",
+    "test:auth": "tsx scripts/test_auth_persistence_and_ratelimit.ts",
+    "test:domains": "tsx scripts/test_technician_multi_domain_registration.ts",
+    "test:dispatch": "tsx scripts/test_real_providers_and_booking_dispatch.ts",
+    "test:gps": "tsx scripts/test_gps_and_live_tracking.ts",
+    "test": "npm run test:voice && npm run test:backend && npm run test:security && npm run test:auth && npm run test:domains && npm run test:dispatch && npm run test:gps",
     "preview": "vite preview"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
     "@tailwindcss/vite": "^4.3.3",
+    "leaflet": "^1.9.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^24.13.3",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.2.18",

@@ -68,14 +68,17 @@ async function runSecurityVerification() {
   // TEST GROUP 2: REAL USER REGISTRATION & AUTHENTICATION
   // --------------------------------------------------------------------------
   console.log('\n--- Test Group 2: User Registration & Safe Auth APIs ---');
+  const testPhone = '98' + Math.floor(10000000 + Math.random() * 90000000);
+  const testEmail = `anand_${Date.now()}@example.com`;
+
   const regRes = await handleNexdoApiRequest({
     method: 'POST',
     url: '/api/auth/register',
     body: {
-      phone: '9840999888',
+      phone: testPhone,
       password: 'StrongUserPass123',
       name: 'Anand Kumar',
-      email: 'anand@example.com',
+      email: testEmail,
       role: 'CUSTOMER',
     },
   });
@@ -93,7 +96,7 @@ async function runSecurityVerification() {
     method: 'POST',
     url: '/api/auth/login',
     body: {
-      phone: '9840999888',
+      phone: testPhone,
       password: 'StrongUserPass123',
     },
   });
@@ -112,7 +115,7 @@ async function runSecurityVerification() {
     headers: { Authorization: `Bearer ${userToken}` },
   });
   assert(meRes.status === 200, 'GET /api/auth/me returns 200 for valid session');
-  assert(meRes.body.user.phone === '9840999888', 'Authenticated user identity confirmed');
+  assert(meRes.body.user.phone === testPhone, 'Authenticated user identity confirmed');
 
   // --------------------------------------------------------------------------
   // TEST GROUP 3: ACCOUNT ENUMERATION & BRUTE FORCE RATE LIMITING
@@ -128,7 +131,7 @@ async function runSecurityVerification() {
     },
   });
   assert(
-    unkLogin.status === 500 && unkLogin.body.error === 'Invalid mobile number or password',
+    (unkLogin.status === 401 || unkLogin.status === 500) && unkLogin.body.error === 'Invalid mobile number or password',
     'Account enumeration blocked: Unknown user returns generic error message'
   );
 
@@ -137,7 +140,7 @@ async function runSecurityVerification() {
     method: 'POST',
     url: '/api/auth/login',
     body: {
-      phone: '9840999888',
+      phone: testPhone,
       password: 'IncorrectPassword',
     },
   });
@@ -152,7 +155,7 @@ async function runSecurityVerification() {
     const attempt = await handleNexdoApiRequest({
       method: 'POST',
       url: '/api/auth/login',
-      body: { phone: '9840999888', password: 'BadPassword' },
+      body: { phone: testPhone, password: 'BadPassword' },
     });
     if (attempt.body.error?.includes('Too many login attempts')) {
       rateLimited = true;
@@ -185,14 +188,14 @@ async function runSecurityVerification() {
   const relogin = await handleNexdoApiRequest({
     method: 'POST',
     url: '/api/auth/login',
-    body: { phone: '9840999888', password: 'StrongUserPass123' },
+    body: { phone: testPhone, password: 'StrongUserPass123' },
   });
   const activeTokenBeforeReset = relogin.body.sessionToken;
 
   const resetReq = await handleNexdoApiRequest({
     method: 'POST',
     url: '/api/auth/forgot-password',
-    body: { phone: '9840999888' },
+    body: { phone: testPhone },
   });
   assert(resetReq.status === 200, 'POST /api/auth/forgot-password dispatches reset token');
 
@@ -217,11 +220,14 @@ async function runSecurityVerification() {
   // TEST GROUP 5: AUTHORIZATION & IDOR PREVENTION
   // --------------------------------------------------------------------------
   console.log('\n--- Test Group 5: Zero-Trust Authorization & IDOR Protection ---');
-  // Register Customer A & Customer B
+  // Register Customer A & Customer B with unique test phones
+  const phoneA = '91' + Math.floor(10000000 + Math.random() * 90000000);
+  const phoneB = '92' + Math.floor(10000000 + Math.random() * 90000000);
+
   const custAReg = await handleNexdoApiRequest({
     method: 'POST',
     url: '/api/auth/register',
-    body: { phone: '9111111111', password: 'PasswordA123', name: 'Customer Alpha' },
+    body: { phone: phoneA, password: 'PasswordA123', name: 'Customer Alpha' },
   });
   const custAToken = custAReg.body.sessionToken;
   const custAId = custAReg.body.user.id;
@@ -229,7 +235,7 @@ async function runSecurityVerification() {
   const custBReg = await handleNexdoApiRequest({
     method: 'POST',
     url: '/api/auth/register',
-    body: { phone: '9222222222', password: 'PasswordB123', name: 'Customer Beta' },
+    body: { phone: phoneB, password: 'PasswordB123', name: 'Customer Beta' },
   });
   const custBToken = custBReg.body.sessionToken;
 

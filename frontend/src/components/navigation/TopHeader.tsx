@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { Globe, User, ArrowLeftRight } from 'lucide-react';
+import { Globe, User, ArrowLeftRight, LogOut } from 'lucide-react';
 import { useApp } from '../../store/AppContext';
 import { LanguageSelectorModal } from './LanguageSelectorModal';
 
@@ -10,13 +10,13 @@ interface TopHeaderProps {
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = () => {
-  const { currentRole, selectedLanguage, user } = useApp();
+  const { currentRole, selectedLanguage, user, logout } = useApp();
   const [langModalOpen, setLangModalOpen] = useState(false);
   const navigate = useNavigate();
 
   const customerNav = [
     { to: '/customer', label: 'Home', end: true, action: 'NAVIGATE_HOME' },
-    { to: '/customer/providers', label: 'Find Pros', action: 'NAVIGATE_PROVIDERS' },
+    { to: '/customer/providers', label: 'Find Service Providers', action: 'NAVIGATE_PROVIDERS' },
     { to: '/customer/bookings', label: 'Bookings', action: 'NAVIGATE_BOOKINGS' },
     { to: '/customer/express', label: 'Request Service', action: 'EXPRESS_NEED' },
     { to: '/customer/profile', label: 'Profile', action: 'NAVIGATE_PROFILE' },
@@ -60,7 +60,7 @@ export const TopHeader: React.FC<TopHeaderProps> = () => {
                   ? 'bg-blue-50 text-blue-700 border border-blue-200'
                   : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
               }`}>
-                {currentRole === 'CUSTOMER' ? 'Customer' : 'Technician'}
+                {currentRole === 'CUSTOMER' ? 'Customer' : 'Service Provider'}
               </span>
             )}
           </div>
@@ -109,7 +109,7 @@ export const TopHeader: React.FC<TopHeaderProps> = () => {
               onClick={() => navigate('/select-role')}
               data-voice-action={currentRole === 'CUSTOMER' ? 'SWITCH_ROLE_TECHNICIAN' : 'SWITCH_ROLE_CUSTOMER'}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200/80 text-xs font-semibold text-slate-700 transition-colors focus-ring cursor-pointer select-none"
-              title="Switch between Customer and Technician mode"
+              title="Switch between Customer and Service Provider mode"
             >
               <ArrowLeftRight className="w-3.5 h-3.5 text-slate-600" />
               <span className="hidden sm:inline">Switch Role</span>
@@ -124,12 +124,27 @@ export const TopHeader: React.FC<TopHeaderProps> = () => {
             >
               <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs border border-blue-200 overflow-hidden">
                 {user.avatarUrl ? (
-                  <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
+                  <img src={user.avatarUrl} alt={[user.firstName, user.lastName].filter(Boolean).join(' ') || user.name} className="w-full h-full object-cover" />
                 ) : (
                   <User className="w-3.5 h-3.5 text-blue-700" />
                 )}
               </div>
             </Link>
+
+            {/* Logout Button */}
+            <button
+              onClick={async () => {
+                await logout();
+                navigate('/', { replace: true });
+              }}
+              data-voice-action="LOGOUT"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-red-200/80 bg-red-50 hover:bg-red-100 text-xs font-semibold text-red-700 transition-colors focus-ring cursor-pointer select-none"
+              title="Sign Out"
+              aria-label="Sign Out"
+            >
+              <LogOut className="w-3.5 h-3.5 text-red-600 shrink-0" />
+              <span className="hidden sm:inline">Logout</span>
+            </button>
           </div>
         </div>
       </header>

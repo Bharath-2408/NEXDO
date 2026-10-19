@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Phone, Calendar, MapPin, Edit3, X, Check, ArrowLeftRight, ShieldCheck } from 'lucide-react';
+import { User, Phone, Calendar, MapPin, Edit3, X, Check, ArrowLeftRight, ShieldCheck, LogOut } from 'lucide-react';
 import { useApp } from '../../store/AppContext';
 import { useVoice } from '../../voice/VoiceContext';
 import { Input } from '../../components/ui/Input';
@@ -8,40 +8,62 @@ import { Button } from '../../components/ui/Button';
 import { VoiceFormFillerCard } from '../../components/voice/VoiceFormFillerCard';
 
 export const CustomerProfilePage: React.FC = () => {
-  const { user, updateCustomerProfile, showToast, selectedLanguage } = useApp();
+  const { user, updateCustomerProfile, showToast, selectedLanguage, logout } = useApp();
   const { registerPageActionHandler, updateConversationContext } = useVoice();
   const navigate = useNavigate();
 
   // Strict Read-Only Default State
   const [isEditing, setIsEditing] = useState(false);
 
-  // Form State
-  const [name, setName] = useState(user.customerProfile.name);
+  const getInitialNames = () => {
+    const fallbackParts = (user.customerProfile.name || '').trim().split(/\s+/);
+    const fName = user.customerProfile.firstName || fallbackParts[0] || '';
+    const lName = user.customerProfile.lastName ?? fallbackParts.slice(1).join(' ');
+    return { fName, lName };
+  };
+
+  const initialNames = getInitialNames();
+  const [firstName, setFirstName] = useState(initialNames.fName);
+  const [lastName, setLastName] = useState(initialNames.lName);
   const [phone, setPhone] = useState(user.customerProfile.phone);
-  const [dob, setDob] = useState(user.customerProfile.dob || '24/08/2007');
+  const [dob, setDob] = useState(user.customerProfile.dob || '');
   const [address, setAddress] = useState(user.customerProfile.address);
   const [district, setDistrict] = useState(user.customerProfile.district);
 
+  const displayFullName =
+    [user.customerProfile.firstName, user.customerProfile.lastName].filter(Boolean).join(' ') ||
+    user.customerProfile.name;
+
   const handleStartEdit = () => {
-    setName(user.customerProfile.name);
+    const { fName, lName } = getInitialNames();
+    setFirstName(fName);
+    setLastName(lName);
     setPhone(user.customerProfile.phone);
-    setDob(user.customerProfile.dob || '24/08/2007');
+    setDob(user.customerProfile.dob || '');
     setAddress(user.customerProfile.address);
     setDistrict(user.customerProfile.district);
     setIsEditing(true);
   };
 
   const handleCancel = () => {
-    setName(user.customerProfile.name);
+    const { fName, lName } = getInitialNames();
+    setFirstName(fName);
+    setLastName(lName);
     setPhone(user.customerProfile.phone);
-    setDob(user.customerProfile.dob || '24/08/2007');
+    setDob(user.customerProfile.dob || '');
     setAddress(user.customerProfile.address);
     setDistrict(user.customerProfile.district);
     setIsEditing(false);
   };
 
   const handleVoiceApply = (entities: any) => {
-    if (entities.name) setName(entities.name);
+    if (entities.firstName) setFirstName(entities.firstName);
+    if (entities.lastName) setLastName(entities.lastName);
+    if (entities.name && !entities.firstName) {
+      const parts = String(entities.name).trim().split(/\s+/);
+      setFirstName(parts[0] || '');
+      setLastName(parts.slice(1).join(' '));
+    }
     if (entities.dob) setDob(entities.dob);
     if (entities.phone) setPhone(entities.phone);
     if (entities.district) setDistrict(entities.district);
@@ -51,8 +73,13 @@ export const CustomerProfilePage: React.FC = () => {
 
   const handleSave = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    const trimmedFirst = firstName.trim();
+    const trimmedLast = lastName.trim();
+    const combinedName = [trimmedFirst, trimmedLast].filter(Boolean).join(' ') || user.customerProfile.name;
     updateCustomerProfile({
-      name,
+      firstName: trimmedFirst,
+      lastName: trimmedLast,
+      name: combinedName,
       phone,
       dob,
       address,
@@ -135,6 +162,18 @@ export const CustomerProfilePage: React.FC = () => {
           >
             Switch Persona
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              await logout();
+              navigate('/', { replace: true });
+            }}
+            leftIcon={<LogOut className="w-3.5 h-3.5 text-rose-500" />}
+            className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
+          >
+            Sign Out
+          </Button>
         </div>
       </div>
 
@@ -144,10 +183,10 @@ export const CustomerProfilePage: React.FC = () => {
           {/* Summary Card */}
           <div className="p-5 rounded-xl bg-white border border-slate-200 shadow-2xs flex items-center gap-4">
             <div className="w-14 h-14 rounded-full bg-blue-100 text-blue-800 font-extrabold text-lg flex items-center justify-center border border-blue-200 shrink-0">
-              {user.name.slice(0, 2).toUpperCase()}
+              {displayFullName.slice(0, 2).toUpperCase()}
             </div>
             <div className="min-w-0">
-              <h3 className="text-base font-extrabold text-[#0A2540]">{user.customerProfile.name}</h3>
+              <h3 className="text-base font-extrabold text-[#0A2540]">{displayFullName}</h3>
               <p className="text-xs text-slate-500 font-mono">{user.customerProfile.phone}</p>
               <div className="flex items-center gap-2 mt-1">
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
@@ -162,9 +201,15 @@ export const CustomerProfilePage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Personal Information</h4>
-              <div>
-                <span className="text-[10px] font-semibold text-slate-400 block">Full Legal Name</span>
-                <span className="text-sm font-semibold text-slate-800">{user.customerProfile.name}</span>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <span className="text-[10px] font-semibold text-slate-400 block">First Name</span>
+                  <span className="text-sm font-semibold text-slate-800">{initialNames.fName || '—'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-semibold text-slate-400 block">Last Name</span>
+                  <span className="text-sm font-semibold text-slate-800">{initialNames.lName || '—'}</span>
+                </div>
               </div>
               <div>
                 <span className="text-[10px] font-semibold text-slate-400 block">Date of Birth</span>
@@ -215,9 +260,19 @@ export const CustomerProfilePage: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
-                label="Full Name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                label="First Name"
+                placeholder="Enter your first name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                leftIcon={<User className="w-4 h-4" />}
+                required
+              />
+
+              <Input
+                label="Last Name"
+                placeholder="Enter your last name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
                 leftIcon={<User className="w-4 h-4" />}
                 required
               />

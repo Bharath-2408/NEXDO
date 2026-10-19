@@ -1,8 +1,13 @@
 // ============================================================================
-// SUPABASE CLIENT INITIALIZATION
-// Configures authenticated Supabase client using environment variables.
-// When credentials are not provided, gracefully falls back to local API engine.
-// Zero secrets exposed to frontend.
+// SUPABASE CLIENT INITIALIZATION (Client-Side Anon Read-Only Scope)
+// NEXDO uses server-authoritative custom authentication against `public.users`
+// via backend router endpoints (`/api/auth/*`) with PBKDF2-SHA512 password
+// hashing, secure session management, and server-side role enforcement.
+//
+// Client bundles connect via this client strictly for RLS-scoped public reads
+// (e.g. active technician profiles). Authentication state is managed via
+// `nexdoApi.auth` and AppContext sessions.
+// Zero backend secrets or service-role keys are exposed to the browser.
 // ============================================================================
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';

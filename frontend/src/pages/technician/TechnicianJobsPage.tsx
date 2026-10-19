@@ -35,12 +35,12 @@ export const TechnicianJobsPage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
 
-  // Input states for OTPs and Estimate
-  const [diagnosisOtpInput, setDiagnosisOtpInput] = useState('4821');
-  const [finalOtpInput, setFinalOtpInput] = useState('8942');
-  const [estimateParts, setEstimateParts] = useState(700);
-  const [estimateLabour, setEstimateLabour] = useState(400);
-  const [estimateDesc, setEstimateDesc] = useState('Capacitor replacement and wiring repair');
+  // Input states for OTPs and Estimate (clean default empty values)
+  const [diagnosisOtpInput, setDiagnosisOtpInput] = useState('');
+  const [finalOtpInput, setFinalOtpInput] = useState('');
+  const [estimateParts, setEstimateParts] = useState(0);
+  const [estimateLabour, setEstimateLabour] = useState(0);
+  const [estimateDesc, setEstimateDesc] = useState('');
 
   const currentBooking = activeBooking;
   const isCompleted = currentBooking?.status === 'COMPLETED';
@@ -53,7 +53,7 @@ export const TechnicianJobsPage: React.FC = () => {
   return (
     <div className="text-left space-y-5 pb-8">
       <div>
-        <h2 className="text-2xl font-extrabold text-[#071A36]">Technician Job Execution</h2>
+        <h2 className="text-2xl font-extrabold text-[#071A36]">Service Provider Job Execution</h2>
         <p className="text-xs text-slate-500 mt-0.5">
           Real-world operational coordination: Journey → Inspection OTP → Locked Estimate → QR Payment → Final OTP.
         </p>
@@ -202,12 +202,13 @@ export const TechnicianJobsPage: React.FC = () => {
                   <span className="text-xs font-bold text-blue-600">Diagnosis Fee: ₹149</span>
                 </div>
                 <p className="text-xs text-slate-600">
-                  Ask customer for their 4-digit Diagnosis OTP (default test: <code className="font-mono bg-white px-1.5 py-0.5 rounded border">4821</code>) to verify arrival and begin inspection.
+                  Ask customer for their 4-digit Diagnosis OTP to verify arrival and begin inspection.
                 </p>
                 <div className="flex items-center gap-2">
                   <input
                     type="text"
                     maxLength={4}
+                    placeholder="OTP"
                     value={diagnosisOtpInput}
                     onChange={(e) => setDiagnosisOtpInput(e.target.value)}
                     className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-center text-lg font-mono font-bold tracking-widest text-[#071A36] w-32 focus-ring"
@@ -219,7 +220,7 @@ export const TechnicianJobsPage: React.FC = () => {
                       if (ok) {
                         showToast('Diagnosis OTP verified! You can now submit estimate.', 'success');
                       } else {
-                        showToast('Invalid OTP. Expected 4821.', 'error');
+                        showToast('Invalid OTP entered. Please verify with customer.', 'error');
                       }
                     }}
                     className="flex-1 bg-[#071A36] hover:bg-blue-600 text-white font-bold"
@@ -400,13 +401,14 @@ export const TechnicianJobsPage: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-slate-600">
-                Ask customer for their 4-digit Final Completion OTP (default test: <code className="font-mono bg-white px-1.5 py-0.5 rounded border">8942</code>) to finalize the job and credit your earnings.
+                Ask customer for their 4-digit Final Completion OTP to finalize the job and credit your earnings.
               </p>
 
               <div className="flex items-center gap-2">
                 <input
                   type="text"
                   maxLength={4}
+                  placeholder="OTP"
                   value={finalOtpInput}
                   onChange={(e) => setFinalOtpInput(e.target.value)}
                   className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-center text-lg font-mono font-bold tracking-widest text-[#071A36] w-32 focus-ring"
@@ -416,9 +418,10 @@ export const TechnicianJobsPage: React.FC = () => {
                   onClick={() => {
                     const ok = verifyFinalOtp(currentBooking.id, finalOtpInput);
                     if (ok) {
-                      showToast('Final OTP verified! ₹1,100 credited to your wallet with ₹0 platform commission.', 'success');
+                      const amount = currentBooking.estimate?.total || currentBooking.estimatedPrice || 149;
+                      showToast(`Final OTP verified! ₹${amount} credited to your wallet with ₹0 platform commission.`, 'success');
                     } else {
-                      showToast('Invalid OTP. Expected 8942.', 'error');
+                      showToast('Invalid OTP entered. Please verify with customer.', 'error');
                     }
                   }}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"

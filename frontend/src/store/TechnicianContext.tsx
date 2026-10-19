@@ -1,13 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { JobOpportunity, TechnicianEarnings } from '../types/technician';
 import { Capability } from '../types/account';
 import { Booking, BookingStatus } from '../types/customer';
 import { ALL_AVAILABLE_CAPABILITIES } from '../constants/capabilities';
-import {
-  MOCK_TECHNICIAN_EARNINGS,
-  MOCK_INITIAL_BOOKINGS,
-} from '../constants/mockData';
 import { nexdoApi } from '../api/nexdoApi';
+import { useApp } from './AppContext';
+import { isValidCoordinate } from '../utils/geoUtils';
 
 function bookingToOpportunity(b: Booking): JobOpportunity {
   const isDiagnosis = b.serviceMode !== 'SERVICE';
@@ -44,53 +42,15 @@ function bookingToOpportunity(b: Booking): JobOpportunity {
   };
 }
 
-function getDynamicOpportunities(bookingsList: Booking[]): JobOpportunity[] {
-  const requestedBookings = bookingsList.filter((b) => b.status === 'REQUESTED');
-  if (requestedBookings.length > 0) {
-    return requestedBookings.map(bookingToOpportunity);
-  }
-
-  try {
-    const rawNeed = localStorage.getItem('nexdo_active_need');
-    if (rawNeed) {
-      const need = JSON.parse(rawNeed);
-      if (need && (need.normalizedService || need.rawTranscript)) {
-        const isDiagnosis = need.serviceMode !== 'SERVICE';
-        const serviceName = need.normalizedService || need.rawTranscript || 'Home Service';
-        const requestedTime = need.preferredTime || 'Tomorrow · 6:00 PM';
-        const dist = 2.4;
-        const diagFee = isDiagnosis ? 149 : 0;
-        return [
-          {
-            id: 'opp_active_need',
-            serviceName,
-            category: need.serviceCategory || 'Home Services',
-            customerArea: need.location || 'Local Area',
-            distanceKm: dist,
-            requestedTime,
-            diagnosisFee: diagFee,
-            repairPriceDecidedAfterDiagnosis: isDiagnosis,
-            serviceMode: isDiagnosis ? 'DIAGNOSIS' : 'SERVICE',
-            urgency: need.urgency === 'URGENT' ? 'URGENT' : 'NORMAL',
-            status: 'ELIGIBLE',
-            requiredCapability: 'GENERAL',
-            customerNameMasked: 'Verified Customer (Local Area)',
-            issueDescription: need.specificIssue || need.rawTranscript || 'Customer request',
-            announcementTamil: isDiagnosis
-              ? `உங்களுக்கு ஒரு புதிய ${serviceName} request வந்திருக்கு. நேரம்: ${requestedTime}. தூரம் ${dist} கி.மீ. பரிசோதனைக் கட்டணம் ₹${diagFee}. Accept பண்ணலாமா?`
-              : `உங்களுக்கு ஒரு புதிய நேரடி ${serviceName} request வந்திருக்கு. நேரம்: ${requestedTime}. தூரம் ${dist} கி.மீ. நேரடி சர்வீஸ் கோரப்பட்டுள்ளது. Accept பண்ணலாமா?`,
-            announcementEnglish: isDiagnosis
-              ? `New ${serviceName} request. Scheduled: ${requestedTime}. Distance: ${dist} km away. Diagnosis fee ₹${diagFee}. Would you like to accept?`
-              : `New direct ${serviceName} request. Scheduled: ${requestedTime}. Distance: ${dist} km away. Direct service requested. Would you like to accept?`,
-          },
-        ];
-      }
+function getDynamicOpportunities(bookingsList: Booking[], currentTechId?: string): JobOpportunity[] {
+  const requestedBookings = bookingsList.filter((b) => {
+    if (b.status !== 'REQUESTED') return false;
+    if (b.technicianId && currentTechId) {
+      return b.technicianId === currentTechId || (b.provider && b.provider.id === currentTechId);
     }
-  } catch {
-    // Ignore storage parse errors
-  }
-
-  return [];
+    return true;
+  });
+  return requestedBookings.map(bookingToOpportunity);
 }
 
 interface TechnicianContextType {
@@ -100,6 +60,9 @@ interface TechnicianContextType {
   activeBooking: Booking | null;
   earnings: TechnicianEarnings;
   isOnline: boolean;
+  isLocationSharing: boolean;
+  currentLocation: { latitude: number; longitude: number; accuracy?: number | null } | null;
+  locationError: string | null;
   capabilities: Capability[];
   addCapability: (capabilityId: string) => void;
   removeCapability: (capabilityId: string) => void;
@@ -107,6 +70,7 @@ interface TechnicianContextType {
   updateExperienceLevel: (capabilityId: string, level: 'BEGINNER' | 'INTERMEDIATE' | 'EXPERT') => void;
   toggleOnline: () => void;
   setOnlineStatus: (online: boolean) => void;
+  toggleLocationSharing: (enable?: boolean) => Promise<boolean>;
   acceptOpportunity: (oppId: string) => void;
   rejectOpportunity: (oppId: string) => void;
   advanceJobStatus: (oppId: string) => void;
@@ -120,17 +84,22 @@ interface TechnicianContextType {
   activateSubscription: (type: 'DAILY' | 'WEEKLY' | 'MONTHLY') => void;
 }
 
-const initialCapabilities: Capability[] = [
-  { id: 'cap_ac_rep', code: 'AC_REPAIR', name: 'AC Repair & Diagnostics', category: 'HVAC & Cooling', experienceLevel: 'EXPERT', isCertified: true, active: true },
-  { id: 'cap_ac_srv', code: 'AC_SERVICE', name: 'AC Deep Cleaning & Gas Refill', category: 'HVAC & Cooling', experienceLevel: 'EXPERT', isCertified: true, active: true },
-  { id: 'cap_fan_rep', code: 'FAN_REPAIR', name: 'Ceiling & Exhaust Fan Repair', category: 'Electrical', experienceLevel: 'EXPERT', isCertified: true, active: true },
-  { id: 'cap_elec_gen', code: 'ELECTRICAL_WORK', name: 'Wiring, MCB & Switchboard Work', category: 'Electrical', experienceLevel: 'INTERMEDIATE', isCertified: false, active: true },
-  { id: 'cap_bike', code: 'BIKE_REPAIR', name: 'Two-Wheeler Service & Starting Fix', category: 'Automotive', experienceLevel: 'INTERMEDIATE', isCertified: false, active: true },
-];
+const DEFAULT_EMPTY_EARNINGS: TechnicianEarnings = {
+  todayEarnings: 0,
+  thisWeekEarnings: 0,
+  thisMonthEarnings: 0,
+  totalJobs: 0,
+  platformFeeCharged: 0,
+  activeSubscriptionTitle: 'Standard Pass',
+  recentPayouts: [],
+};
 
 const TechnicianContext = createContext<TechnicianContextType | undefined>(undefined);
 
 export const TechnicianProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useApp();
+  const techId = user?.technicianProfile?.id || user?.id;
+
   // Synchronize with active customer bookings
   const [bookings, setBookings] = useState<Booking[]>(() => {
     try {
@@ -139,27 +108,173 @@ export const TechnicianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     } catch {
       // Fallback
     }
-    return MOCK_INITIAL_BOOKINGS;
+    return [];
   });
 
   const [dismissedOppIds, setDismissedOppIds] = useState<string[]>([]);
 
   const opportunities = useMemo(
-    () => getDynamicOpportunities(bookings).filter((o) => !dismissedOppIds.includes(o.id)),
-    [bookings, dismissedOppIds]
+    () => getDynamicOpportunities(bookings, techId).filter((o) => !dismissedOppIds.includes(o.id)),
+    [bookings, dismissedOppIds, techId]
   );
 
-  const [acceptedJobs, setAcceptedJobs] = useState<JobOpportunity[]>(() => {
-    const ongoing = MOCK_INITIAL_BOOKINGS.find((b) => b.status === 'ACCEPTED' || b.status === 'TECHNICIAN_ON_THE_WAY');
-    if (ongoing) {
-      return [{ ...bookingToOpportunity(ongoing), id: 'job_accepted_01', status: 'ACCEPTED' }];
+  const [acceptedJobs, setAcceptedJobs] = useState<JobOpportunity[]>([]);
+  const [earnings, setEarnings] = useState<TechnicianEarnings>(DEFAULT_EMPTY_EARNINGS);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [capabilities, setCapabilities] = useState<Capability[]>(() => {
+    try {
+      const saved = localStorage.getItem('nexdo_technician_capabilities');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // Fallback
     }
-    return [];
+    return user?.technicianProfile?.capabilities || [];
   });
 
-  const [earnings, setEarnings] = useState<TechnicianEarnings>(MOCK_TECHNICIAN_EARNINGS);
-  const [isOnline, setIsOnline] = useState<boolean>(true);
-  const [capabilities, setCapabilities] = useState<Capability[]>(initialCapabilities);
+  const [isLocationSharing, setIsLocationSharing] = useState<boolean>(false);
+  const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number; accuracy?: number | null } | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+
+  const stopLocationTracking = useCallback(() => {
+    if (watchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setIsLocationSharing(false);
+    nexdoApi.technicians.toggleLocationSharing(false).catch(() => {});
+  }, []);
+
+  const toggleLocationSharing = useCallback(async (enable?: boolean): Promise<boolean> => {
+    const shouldEnable = enable !== undefined ? enable : !isLocationSharing;
+
+    if (!shouldEnable) {
+      stopLocationTracking();
+      return false;
+    }
+
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) {
+      setLocationError('Geolocation is not supported by your browser.');
+      return false;
+    }
+
+    setLocationError(null);
+
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const { latitude, longitude, accuracy, speed, heading } = pos.coords;
+          if (!isValidCoordinate(latitude, longitude)) {
+            setLocationError('Invalid GPS coordinates received.');
+            resolve(false);
+            return;
+          }
+
+          setCurrentLocation({ latitude, longitude, accuracy });
+          setIsLocationSharing(true);
+
+          try {
+            await nexdoApi.technicians.updateLocation({
+              latitude,
+              longitude,
+              accuracy: accuracy || null,
+              speed: speed || null,
+              heading: heading || null,
+            });
+            await nexdoApi.technicians.toggleLocationSharing(true);
+          } catch {
+            // Non-fatal
+          }
+
+          // Start continuous watching
+          if (watchIdRef.current !== null) {
+            navigator.geolocation.clearWatch(watchIdRef.current);
+          }
+
+          watchIdRef.current = navigator.geolocation.watchPosition(
+            async (nextPos) => {
+              const nextCoords = nextPos.coords;
+              if (isValidCoordinate(nextCoords.latitude, nextCoords.longitude)) {
+                setCurrentLocation({
+                  latitude: nextCoords.latitude,
+                  longitude: nextCoords.longitude,
+                  accuracy: nextCoords.accuracy,
+                });
+                try {
+                  await nexdoApi.technicians.updateLocation({
+                    latitude: nextCoords.latitude,
+                    longitude: nextCoords.longitude,
+                    accuracy: nextCoords.accuracy || null,
+                    speed: nextCoords.speed || null,
+                    heading: nextCoords.heading || null,
+                  });
+                } catch {
+                  // Non-fatal
+                }
+              }
+            },
+            (err) => {
+              setLocationError(err.message || 'GPS signal lost.');
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 15000,
+              maximumAge: 10000,
+            }
+          );
+
+          resolve(true);
+        },
+        (err) => {
+          let msg = 'Failed to access GPS location.';
+          if (err.code === err.PERMISSION_DENIED) {
+            msg = 'GPS permission denied. Please allow location access.';
+          } else if (err.code === err.TIMEOUT) {
+            msg = 'Location request timed out.';
+          }
+          setLocationError(msg);
+          setIsLocationSharing(false);
+          resolve(false);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 10000,
+        }
+      );
+    });
+  }, [isLocationSharing, stopLocationTracking]);
+
+  // Cleanup watcher on unmount
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, []);
+
+  // Sync capabilities from authenticated technician profile
+  useEffect(() => {
+    const userCaps = user?.technicianProfile?.capabilities;
+    if (userCaps && userCaps.length > 0) {
+      setCapabilities((prev) => {
+        if (JSON.stringify(prev) === JSON.stringify(userCaps)) return prev;
+        return userCaps;
+      });
+    }
+  }, [user?.technicianProfile?.capabilities]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('nexdo_technician_capabilities', JSON.stringify(capabilities));
+    } catch {
+      // Ignore
+    }
+  }, [capabilities]);
 
   const persistBookings = (newBookings: Booking[]) => {
     setBookings(newBookings);
@@ -182,7 +297,32 @@ export const TechnicianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return () => window.removeEventListener('nexdo_booking_sync', handleSync);
   }, []);
 
-  const activeBooking = bookings.find((b) => b.status !== 'COMPLETED' && b.status !== 'CANCELLED') || bookings[0] || null;
+  // Fetch real jobs and real earnings from backend on user session
+  useEffect(() => {
+    if (!user) return;
+    const currentTechId = user.technicianProfile?.id || user.id;
+
+    nexdoApi.technician
+      .getJobs(currentTechId)
+      .then((jobs) => {
+        if (jobs) {
+          const accepted = jobs.filter((j) => j.status === 'ACCEPTED');
+          setAcceptedJobs(accepted);
+        }
+      })
+      .catch(() => {});
+
+    nexdoApi.technician
+      .getEarnings(currentTechId)
+      .then((data) => {
+        if (data) {
+          setEarnings(data);
+        }
+      })
+      .catch(() => {});
+  }, [user]);
+
+  const activeBooking = bookings.find((b) => b.status !== 'COMPLETED' && b.status !== 'CANCELLED') || null;
   const activeJob = acceptedJobs.find((j) => j.status === 'ACCEPTED') || null;
 
   useEffect(() => {
@@ -203,6 +343,7 @@ export const TechnicianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (next) {
         nexdoApi.technicians.setOnline().catch(() => {});
       } else {
+        stopLocationTracking();
         nexdoApi.technicians.setOffline().catch(() => {});
       }
       return next;
@@ -214,6 +355,7 @@ export const TechnicianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (online) {
       nexdoApi.technicians.setOnline().catch(() => {});
     } else {
+      stopLocationTracking();
       nexdoApi.technicians.setOffline().catch(() => {});
     }
   };
@@ -250,20 +392,23 @@ export const TechnicianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     );
   };
 
-  const acceptOpportunity = (oppId: string) => {
-    nexdoApi.technician.acceptJob(oppId).catch(() => {});
+  const acceptOpportunity = async (oppId: string) => {
+    const rawId = oppId.replace('opp_', '');
+    try {
+      await nexdoApi.technician.acceptJob(rawId);
+    } catch (err) {
+      console.error('Accept job error in backend:', err);
+    }
     const opp = opportunities.find((o) => o.id === oppId);
     if (opp) {
       const accepted: JobOpportunity = { ...opp, status: 'ACCEPTED' };
       setDismissedOppIds((prev) => [...prev, oppId]);
       setAcceptedJobs((prev) => [accepted, ...prev]);
 
-      // If active booking is in REQUESTED, move it to ACCEPTED
-      if (activeBooking && activeBooking.status === 'REQUESTED') {
-        persistBookings(
-          bookings.map((b) => (b.id === activeBooking.id ? { ...b, status: 'ACCEPTED' } : b))
-        );
-      }
+      // Move booking to ACCEPTED
+      persistBookings(
+        bookings.map((b) => (b.id === rawId || b.id === oppId ? { ...b, status: 'ACCEPTED' as BookingStatus } : b))
+      );
     }
   };
 
@@ -419,9 +564,9 @@ export const TechnicianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const verifyFinalOtp = (bookingId: string, otp: string): boolean => {
     const target = bookings.find((b) => b.id === bookingId);
     if (!target) return false;
-    const expectedOtp = target.finalOtp?.code || '8942';
+    const expectedOtp = target.finalOtp?.code || target.otpCode || '8942';
     if (otp.trim() === expectedOtp.trim()) {
-      const payoutAmount = target.estimate?.total || target.estimatedPrice || 1100;
+      const payoutAmount = target.estimate?.total || target.estimatedPrice || 149;
       persistBookings(
         bookings.map((b) => {
           if (b.id !== bookingId) return b;
@@ -437,12 +582,23 @@ export const TechnicianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         })
       );
 
+      // Transition backend status to COMPLETED
+      nexdoApi.technician.completeJob(bookingId).catch(() => {});
+
       // Payout 100% directly to technician with zero deduction
       creditPayout(
         payoutAmount,
         target.serviceTitle,
         `${target.customerName} (${target.address.split(',')[1]?.trim() || 'Zone'})`
       );
+
+      // Refresh earnings from backend
+      if (user) {
+        const currentTechId = user.technicianProfile?.id || user.id;
+        nexdoApi.technician.getEarnings(currentTechId).then((data) => {
+          if (data) setEarnings(data);
+        }).catch(() => {});
+      }
       return true;
     }
     return false;
@@ -474,6 +630,9 @@ export const TechnicianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         activeBooking,
         earnings,
         isOnline,
+        isLocationSharing,
+        currentLocation,
+        locationError,
         capabilities,
         addCapability,
         removeCapability,
@@ -481,6 +640,7 @@ export const TechnicianProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         updateExperienceLevel,
         toggleOnline,
         setOnlineStatus,
+        toggleLocationSharing,
         acceptOpportunity,
         rejectOpportunity,
         advanceJobStatus,

@@ -11,17 +11,30 @@ import {
   Mic,
   Clock,
   CheckCircle2,
+  Navigation,
+  Loader2,
 } from 'lucide-react';
 import { useCustomer } from '../../store/CustomerContext';
 import { useVoice } from '../../voice/VoiceContext';
 import { Button } from '../../components/ui/Button';
+import { useGeolocation } from '../../hooks/useGeolocation';
 
 export const CustomerHomePage: React.FC = () => {
-  const { activeBooking, matchedProviders } = useCustomer();
+  const { activeBooking, matchedProviders, isLoadingProviders, providersError, fetchProviders, fetchNearbyProviders } = useCustomer();
   const { simulateVoicePrompt, startListening } = useVoice();
   const navigate = useNavigate();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [isGpsActive, setIsGpsActive] = useState(false);
+  const geo = useGeolocation({ autoReverseGeocode: true });
+
+  const handleUseLocation = async () => {
+    const coords = await geo.getCurrentLocation();
+    if (coords) {
+      setIsGpsActive(true);
+      await fetchNearbyProviders(coords.latitude, coords.longitude);
+    }
+  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,7 +58,7 @@ export const CustomerHomePage: React.FC = () => {
   const getBookingStatusBadge = (status: string) => {
     switch (status) {
       case 'CONFIRMED':
-        return 'Technician accepted · ₹149 Diagnosis Fee';
+        return 'Service Provider accepted · ₹149 Diagnosis Fee';
       case 'DIAGNOSIS_COMPLETED':
         return 'Diagnosis complete · Awaiting estimate approval';
       case 'WORK_IN_PROGRESS':
@@ -79,7 +92,7 @@ export const CustomerHomePage: React.FC = () => {
                 {activeBooking.serviceTitle}
               </h4>
               <p className="text-xs text-slate-600 mt-0.5">
-                {activeBooking.provider?.name || 'Verified Technician'} · {activeBooking.scheduledTime}
+                {activeBooking.provider?.name || 'Verified Service Provider'} · {activeBooking.scheduledTime}
               </p>
             </div>
           </div>
@@ -90,7 +103,7 @@ export const CustomerHomePage: React.FC = () => {
               onClick={() => navigate(`/customer/tracking/${activeBooking.id}`)}
               rightIcon={<ArrowRight className="w-4 h-4" />}
             >
-              Track Pro Live
+              Track Service Provider Live
             </Button>
           </div>
         </div>
@@ -106,7 +119,7 @@ export const CustomerHomePage: React.FC = () => {
             What do you need help with?
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Say what you need in natural Tamil or English. We’ll match verified pros in your neighborhood.
+            Say what you need in natural Tamil or English. We’ll match verified service providers in your neighborhood.
           </p>
         </div>
 
@@ -162,93 +175,157 @@ export const CustomerHomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* 3. Nearby Verified Pros Section */}
+      {/* 3. Nearby Verified Service Providers Section */}
       <section className="space-y-3.5">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-extrabold text-[#071A36] flex items-center gap-2">
-              <span>Nearby Verified Pros</span>
+              <span>Nearby Verified Service Providers</span>
               <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             </h2>
             <p className="text-xs text-slate-500">
-              On-call in Adyar & surrounding zones · Standard ₹149 diagnosis fee
+              {isGpsActive && geo.address
+                ? `Filtered by real GPS location (${geo.area || geo.city || 'Nearby'})`
+                : 'On-call in Adyar & surrounding zones · Standard ₹149 diagnosis fee'}
             </p>
           </div>
-          <button
-            onClick={() => navigate('/customer/providers')}
-            className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer flex items-center gap-1"
-          >
-            <span>View All</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* Pro Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {(matchedProviders.length > 0 ? matchedProviders.slice(0, 3) : []).map((pro) => (
-            <div
-              key={pro.id}
-              onClick={() => navigate(`/customer/providers/${pro.id}`)}
-              className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs hover:shadow-md hover:border-blue-300 transition-all cursor-pointer flex flex-col justify-between group"
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleUseLocation}
+              disabled={geo.loading}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
             >
-              <div>
-                {/* Pro Header */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 font-extrabold text-sm flex items-center justify-center shrink-0">
-                      {pro.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-[#071A36] group-hover:text-blue-600 transition-colors">
-                        {pro.name}
-                      </h4>
-                      <p className="text-xs text-slate-500">{pro.primaryCapability}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 text-amber-700 text-xs font-bold shrink-0">
-                    <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
-                    <span>{pro.rating}</span>
-                  </div>
-                </div>
-
-                {/* Distance & Experience */}
-                <div className="mt-3 flex items-center gap-3 text-xs text-slate-500">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-blue-600" />
-                    <span>{pro.distanceKm} km away</span>
-                  </span>
-                  <span>·</span>
-                  <span>{pro.experienceYears} yrs exp</span>
-                </div>
-
-                {/* Pricing Structure Box */}
-                <div className="mt-3.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1">
-                  <div className="flex items-center justify-between text-slate-700 font-medium">
-                    <span className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">
-                      Diagnosis Fee:
-                    </span>
-                    <span className="font-extrabold text-blue-700">₹149</span>
-                  </div>
-                  <div className="flex items-center justify-between text-slate-600">
-                    <span className="text-[11px] text-slate-500">Repair Price:</span>
-                    <span className="font-semibold text-slate-700">Decided after diagnosis</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Zero Commission Footer */}
-              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" />
-                  <span>100% of payment to pro</span>
-                </span>
-                <span className="text-xs font-bold text-blue-600 group-hover:translate-x-0.5 transition-transform">
-                  Request &rarr;
-                </span>
-              </div>
-            </div>
-          ))}
+              {geo.loading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Navigation className="w-3.5 h-3.5" />
+              )}
+              <span>{geo.loading ? 'Locating...' : 'Near Me'}</span>
+            </button>
+            <button
+              onClick={() => navigate('/customer/providers')}
+              className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer flex items-center gap-1"
+            >
+              <span>View All</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
+
+        {/* Service Provider Cards Grid */}
+        {isLoadingProviders ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-white rounded-2xl border border-slate-200/80 p-4 animate-pulse space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-slate-200 shrink-0" />
+                  <div className="space-y-1.5 flex-1">
+                    <div className="h-4 bg-slate-200 rounded w-3/4" />
+                    <div className="h-3 bg-slate-100 rounded w-1/2" />
+                  </div>
+                </div>
+                <div className="h-14 bg-slate-50 rounded-xl" />
+              </div>
+            ))}
+          </div>
+        ) : providersError ? (
+          <div className="p-6 bg-red-50 border border-red-200 rounded-2xl text-center space-y-2">
+            <p className="text-xs font-semibold text-red-700">{providersError}</p>
+            <button
+              onClick={() => fetchProviders()}
+              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        ) : matchedProviders.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-3">
+            <p className="text-sm font-bold text-slate-700">
+              No service providers available in your area yet.
+            </p>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+              We are onboarding verified professionals daily. Please check back shortly or explore another service category.
+            </p>
+            <button
+              onClick={() => fetchProviders()}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+            >
+              Refresh Providers
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {matchedProviders.slice(0, 3).map((pro) => (
+              <div
+                key={pro.id}
+                onClick={() => navigate(`/customer/providers/${pro.id}`)}
+                className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs hover:shadow-md hover:border-blue-300 transition-all cursor-pointer flex flex-col justify-between group"
+              >
+                <div>
+                  {/* Service Provider Header */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 font-extrabold text-sm flex items-center justify-center shrink-0">
+                        {pro.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-[#071A36] group-hover:text-blue-600 transition-colors">
+                          {pro.name}
+                        </h4>
+                        <p className="text-xs text-slate-500">{pro.primaryCapability}</p>
+                      </div>
+                    </div>
+                    {pro.reviewCount > 0 ? (
+                      <div className="flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 text-amber-700 text-xs font-bold shrink-0">
+                        <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                        <span>{pro.rating}</span>
+                      </div>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 text-[10px] font-bold shrink-0">
+                        New Pro
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Distance & Experience */}
+                  <div className="mt-3 flex items-center gap-3 text-xs text-slate-500">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5 text-blue-600" />
+                      <span>{pro.distanceKm} km away</span>
+                    </span>
+                    <span>·</span>
+                    <span>{pro.experienceYears ?? 0} yrs exp</span>
+                  </div>
+
+                  {/* Pricing Structure Box */}
+                  <div className="mt-3.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1">
+                    <div className="flex items-center justify-between text-slate-700 font-medium">
+                      <span className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">
+                        Diagnosis Fee:
+                      </span>
+                      <span className="font-extrabold text-blue-700">₹{pro.diagnosisFee || 149}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span className="text-[11px] text-slate-500">Repair Price:</span>
+                      <span className="font-semibold text-slate-700">{pro.repairPriceNote || 'Decided after diagnosis'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Zero Commission Footer */}
+                <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                  <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>100% of payment to service provider</span>
+                  </span>
+                  <span className="text-xs font-bold text-blue-600 group-hover:translate-x-0.5 transition-transform">
+                    Request &rarr;
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* 4. Trust & Safety Cards */}
@@ -259,7 +336,7 @@ export const CustomerHomePage: React.FC = () => {
           </div>
           <h4 className="text-sm font-bold text-[#071A36]">₹149 Diagnosis First</h4>
           <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-            Technician visits, diagnoses the exact fault, and provides a clear breakdown. No surprise charges.
+            Service provider visits, diagnoses the exact fault, and provides a clear breakdown. No surprise charges.
           </p>
         </div>
 
@@ -279,7 +356,7 @@ export const CustomerHomePage: React.FC = () => {
           </div>
           <h4 className="text-sm font-bold text-[#071A36]">₹0 Platform Commission</h4>
           <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-            100% of your approved payment goes directly to the hardworking local pro.
+            100% of your approved payment goes directly to the hardworking local service provider.
           </p>
         </div>
       </section>
