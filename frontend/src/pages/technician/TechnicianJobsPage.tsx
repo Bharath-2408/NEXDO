@@ -62,7 +62,7 @@ export const TechnicianJobsPage: React.FC = () => {
       <Tabs tabs={tabs} activeTab={activeTab} onChange={(id) => setActiveTab(id as any)} />
 
       {activeTab === 'active' && currentBooking && !isCompleted && (
-        <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-7 shadow-xs space-y-5">
+        <div className="nexdo-card p-5 sm:p-7 space-y-5">
           {/* Header row */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
             <div>

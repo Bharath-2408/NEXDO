@@ -67,6 +67,30 @@
   padding-bottom: env(safe-area-inset-bottom, 0.75rem);
 }
 
+/* Premium Card & Elevation Utilities */
+.nexdo-card {
+  background-color: #FFFFFF;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.03);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nexdo-card-interactive {
+  background-color: #FFFFFF;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 1rem;
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.03);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+.nexdo-card-interactive:hover {
+  transform: translateY(-2px);
+  border-color: #93C5FD;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.07), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+}
+
 /* Restrained micro-interaction elevation */
 .card-hover {
   transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
@@ -76,3 +100,4 @@
   border-color: #93C5FD;
   box-shadow: 0 4px 12px -2px rgba(10, 37, 64, 0.08);
 }
+

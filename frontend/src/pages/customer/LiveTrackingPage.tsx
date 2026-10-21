@@ -41,18 +41,18 @@ export const LiveTrackingPage: React.FC = () => {
   const isPaymentReceived = booking.status === 'PAYMENT_RECEIVED' || booking.status === 'OTP_PENDING';
 
   return (
-    <div className="max-w-2xl mx-auto text-left space-y-6 pb-8">
+    <div className="max-w-2xl mx-auto text-left space-y-6 pb-12">
       {/* Top Header Navigation */}
       <div className="flex items-center justify-between">
         <button
           onClick={() => navigate('/customer')}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 cursor-pointer"
+          className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Home</span>
         </button>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+          <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-blue-100 text-blue-900 border border-blue-200">
             {booking.status}
           </span>
           <span className="text-xs font-bold text-slate-400 font-mono">Ref: {booking.referenceCode}</span>
@@ -60,14 +60,16 @@ export const LiveTrackingPage: React.FC = () => {
       </div>
 
       <div>
-        <h2 className="text-2xl font-extrabold text-[#071A36]">Live Service Coordination</h2>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Real-time coordination and execution for <strong>{booking.serviceTitle}</strong>.
+        <h1 className="text-2xl font-black text-[#071A36] tracking-tight">Live Service Coordination</h1>
+        <p className="text-xs text-slate-500 mt-1">
+          Real-time doorstep coordination and lifecycle status for <strong>{booking.serviceTitle}</strong>.
         </p>
       </div>
 
       {/* Map Simulation */}
-      <LiveTrackingMapMock booking={booking} onAdvanceStep={handleAdvance} />
+      <div className="shadow-xs rounded-3xl overflow-hidden border border-slate-200">
+        <LiveTrackingMapMock booking={booking} onAdvanceStep={handleAdvance} />
+      </div>
 
       {/* REAL-WORLD INTERACTIVE LIFECYCLE ACTION CARDS */}
 

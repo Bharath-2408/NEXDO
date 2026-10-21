@@ -33,9 +33,9 @@ export const BottomNavigation: React.FC = () => {
   return (
     <nav
       aria-label="Main Navigation"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 pb-safe shadow-lg"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200/90 pb-safe shadow-lg"
     >
-      <div className="max-w-md mx-auto px-4 h-16 flex items-center justify-around">
+      <div className="max-w-md mx-auto px-3 h-16 flex items-center justify-around">
         {tabs.map((item) => (
           <NavLink
             key={item.to}
@@ -43,16 +43,31 @@ export const BottomNavigation: React.FC = () => {
             end={item.end}
             data-voice-action={item.action}
             className={({ isActive }) =>
-              `flex flex-col items-center justify-center flex-1 py-1 text-[11px] font-semibold transition-all focus-ring rounded-xl select-none ${
-                isActive ? 'text-blue-600 font-bold' : 'text-slate-500 hover:text-slate-800'
+              `flex flex-col items-center justify-center flex-1 py-1.5 px-1 transition-all focus-ring rounded-2xl select-none min-h-[48px] ${
+                isActive
+                  ? 'text-blue-700 font-bold'
+                  : 'text-slate-500 hover:text-slate-800'
               }`
             }
           >
-            <item.icon className="w-5 h-5 mb-0.5" />
-            <span>{item.label}</span>
+            {({ isActive }) => (
+              <>
+                <div
+                  className={`w-9 h-7 rounded-full flex items-center justify-center transition-all ${
+                    isActive ? 'bg-blue-100/80 text-blue-700' : 'text-slate-500'
+                  }`}
+                >
+                  <item.icon className="w-4 h-4" />
+                </div>
+                <span className="text-[10px] font-semibold tracking-tight mt-0.5">
+                  {item.label}
+                </span>
+              </>
+            )}
           </NavLink>
         ))}
       </div>
     </nav>
   );
 };
+

@@ -1,6 +1,15 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Star, ShieldCheck, Award } from 'lucide-react';
+import {
+  ArrowLeft,
+  Star,
+  ShieldCheck,
+  Award,
+  Clock,
+  MapPin,
+  Wrench,
+  CheckCircle2,
+} from 'lucide-react';
 import { useCustomer } from '../../store/CustomerContext';
 import { Button } from '../../components/ui/Button';
 
@@ -34,114 +43,183 @@ export const ProviderDetailPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto text-left space-y-6">
+    <div className="max-w-2xl mx-auto text-left space-y-6 pb-12">
+      {/* Top Navigation */}
       <button
         onClick={() => navigate('/customer/providers')}
-        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900"
+        className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
         <span>Back to Matches</span>
       </button>
 
-      {/* Profile Card */}
-      <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4 pb-6 border-b border-slate-100">
-          <img
-            src={provider.avatar}
-            alt={provider.name}
-            className="w-20 h-20 rounded-3xl object-cover border border-slate-200 shadow-sm"
-          />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-black text-[#071A36]">{provider.name}</h2>
-              {provider.verified && (
-                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200 flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Verified Service Provider
-                </span>
-              )}
-            </div>
-            <p className="text-xs font-bold text-blue-700 mt-0.5">{provider.primaryCapability}</p>
+      {/* Main Profile Header Card */}
+      <div className="nexdo-card overflow-hidden">
+        {/* Top banner accent */}
+        <div className="h-20 bg-linear-to-r from-[#071A36] via-blue-900 to-indigo-900 relative">
+          <div className="absolute top-3 right-4 flex items-center gap-2">
+            <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-400/30 flex items-center gap-1 backdrop-blur-xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Available for Booking
+            </span>
+          </div>
+        </div>
 
-            <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-500">
+        <div className="p-6 sm:p-8 -mt-10 relative">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-6 border-b border-slate-100">
+            <div className="flex items-end gap-4">
+              <div className="relative">
+                <img
+                  src={provider.avatar}
+                  alt={provider.name}
+                  className="w-20 h-20 rounded-2xl object-cover border-4 border-white shadow-md bg-white"
+                />
+                {provider.verified && (
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-black text-[#071A36] tracking-tight">{provider.name}</h1>
+                  {provider.verified && (
+                    <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
+                      Verified Pro
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm font-bold text-blue-700 mt-0.5">{provider.primaryCapability}</p>
+              </div>
+            </div>
+
+            {/* Quick Metrics Bar */}
+            <div className="flex items-center gap-3 text-xs bg-slate-50 p-2 rounded-xl border border-slate-200/80 w-fit">
               {provider.reviewCount > 0 ? (
-                <span className="flex items-center gap-1">
-                  <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                  <span className="font-bold text-slate-900">{provider.rating}</span> ({provider.reviewCount} reviews)
-                </span>
+                <div className="flex items-center gap-1 font-bold text-slate-800">
+                  <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                  <span>{provider.rating}</span>
+                  <span className="text-slate-400 font-normal">({provider.reviewCount})</span>
+                </div>
               ) : (
-                <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 text-[10px] font-bold">
+                <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-[10px] font-bold">
                   New Pro
                 </span>
               )}
-              <span>·</span>
-              <span>{provider.experienceYears ?? 0} Years Experience</span>
+              <span className="text-slate-300">|</span>
+              <div className="flex items-center gap-1 text-slate-600 font-medium">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                <span>{provider.experienceYears ?? 0} yrs exp</span>
+              </div>
               {provider.distanceKm !== undefined && (
                 <>
-                  <span>·</span>
-                  <span>~{provider.distanceKm} km away</span>
+                  <span className="text-slate-300">|</span>
+                  <div className="flex items-center gap-1 text-slate-600 font-medium">
+                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                    <span>~{provider.distanceKm} km</span>
+                  </div>
                 </>
               )}
             </div>
           </div>
-        </div>
 
-        {/* Bio */}
-        <div className="py-4 border-b border-slate-100">
-          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Service Provider Details</h4>
-          <p className="text-sm text-slate-700 leading-relaxed">{provider.bio}</p>
-        </div>
-
-        {/* Verified Capabilities */}
-        <div className="py-4 border-b border-slate-100">
-          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-            Multi-Skill Capabilities ({provider.allCapabilities.length})
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {provider.allCapabilities.map((cap, idx) => (
-              <span
-                key={idx}
-                className="px-3 py-1 rounded-xl bg-blue-50 border border-blue-200 text-xs font-semibold text-blue-800"
-              >
-                {cap}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Guarantee Banner */}
-        <div className="my-5 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 flex items-start gap-3">
-          <Award className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-          <div>
-            <span className="font-bold text-[#071A36] block">NEXDO 30-Day Service Guarantee</span>
-            <p className="mt-0.5 text-slate-500">
-              Includes free re-inspection if the same issue reoccurs within 30 days of completion.
+          {/* About / Bio */}
+          <div className="py-5 border-b border-slate-100">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+              Professional Background
+            </h3>
+            <p className="text-sm text-slate-700 leading-relaxed">
+              {provider.bio || `${provider.name} is a background-verified local service technician with verified hands-on expertise across ${provider.allCapabilities.join(', ')}. Committed to punctual arrival, transparent quotes, and zero hidden platform markups.`}
             </p>
           </div>
-        </div>
 
-        {/* Pricing Model & CTA */}
-        <div className="pt-3 border-t border-slate-200 space-y-3">
-          <div className="grid grid-cols-2 gap-3 text-left">
-            <div className="p-3 rounded-xl bg-emerald-50/80 border border-emerald-200">
-              <span className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider block">
-                DIAGNOSIS FEE
-              </span>
-              <span className="text-xl font-black text-emerald-700">₹{provider.diagnosisFee || 149}</span>
-            </div>
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
-                REPAIR PRICE
-              </span>
-              <span className="text-xs font-bold text-slate-700 block mt-1">Decided after diagnosis</span>
+          {/* Verified Multi-Skill Capabilities */}
+          <div className="py-5 border-b border-slate-100">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5">
+              Verified Capabilities ({provider.allCapabilities.length})
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {provider.allCapabilities.map((cap, idx) => (
+                <span
+                  key={idx}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 hover:border-blue-300 hover:bg-blue-50/50 transition-colors"
+                >
+                  <Wrench className="w-3 h-3 text-blue-600" />
+                  <span>{cap}</span>
+                </span>
+              ))}
             </div>
           </div>
-          <div className="text-xs font-semibold text-emerald-700">
-            100% of approved service amount · ₹0 platform commission
+
+          {/* Trust Guarantee Card */}
+          <div className="my-5 p-4 rounded-2xl bg-gradient-to-r from-blue-50/80 to-indigo-50/60 border border-blue-200/80 flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Award className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-[#071A36]">NEXDO 30-Day Service Guarantee</span>
+                <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 text-[10px] font-bold">Included</span>
+              </div>
+              <p className="mt-1 text-xs text-slate-600 leading-relaxed">
+                If the repaired issue reoccurs within 30 days of service, {provider.name} will re-inspect and resolve it with ₹0 additional diagnosis fee.
+              </p>
+            </div>
           </div>
-          <Button fullWidth size="lg" onClick={handleBook}>
-            Proceed to Book {provider.name}
-          </Button>
+
+          {/* Transparent Pricing Breakdown */}
+          <div className="pt-4 border-t border-slate-100 space-y-4">
+            <div>
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                Transparent Pricing Structure
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-blue-900 tracking-wider">
+                      Diagnosis & Inspection
+                    </span>
+                    <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">Standard</span>
+                  </div>
+                  <div className="text-2xl font-black text-blue-900 mt-1">₹{provider.diagnosisFee || 149}</div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Covers door-to-door transit, comprehensive fault inspection, and itemized quotation.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-slate-600 tracking-wider">
+                      Repair & Parts Price
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">Price Locked</span>
+                  </div>
+                  <div className="text-sm font-bold text-slate-800 mt-2">Itemized after diagnosis</div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Service provider quotes parts + labour. Work begins only after your explicit approval.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 bg-emerald-50/80 px-3.5 py-2 rounded-xl border border-emerald-200">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>100% of approved payout goes to {provider.name} · ₹0 platform commission deducted</span>
+            </div>
+
+            {/* Direct Booking CTA */}
+            <div className="pt-2">
+              <Button
+                fullWidth
+                size="lg"
+                data-voice-action="SELECT_TECHNICIAN"
+                onClick={handleBook}
+                className="bg-[#071A36] hover:bg-blue-600 text-white font-bold text-sm shadow-md h-12"
+              >
+                Proceed to Book {provider.name}
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
